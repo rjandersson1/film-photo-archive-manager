@@ -1,0 +1,13 @@
+metadata script todo
+
+- eventually be able to copy over and organize metadata for all photos so they are uniform
+- plot ratings over time 
+	- re export older photos to access ratings
+- plot cost over time
+	- film cost lookup
+	- dev cost lookup
+- look into geotagging photos so I can see a map? check what python libraries exist
+- save a copy of import data so I don't have to import each time?
+- time to import
+- percentage complete on import (generally add more updates etc)
+- way to generate a digital contact sheet?
