@@ -5,7 +5,7 @@ from tkinter.filedialog import askdirectory
 from PIL import Image, ImageDraw, ImageFont
 import math
 from concurrent.futures import ThreadPoolExecutor
-
+import random
 
 
 # Open file dialogue to select photos
@@ -19,7 +19,7 @@ def main():
     Tk().withdraw()
 
     # Ask user to select a directory containing film rolls (default to '/Users/rja/Photography/Film Scanning/Temp')
-    directory = askdirectory(title="Select Directory Containing Film Rolls", initialdir='/Users/rja/Photography/Film Scanning/Temp/20 - u400 r35 flims xmas/jpeg temp')
+    directory = askdirectory(title="Select Directory Containing Film Rolls", initialdir='data/roll/jpeg temp/')
     if not directory:
         print("No directory selected. Exiting.")
         return
@@ -74,28 +74,47 @@ class FilmRoll:
         frame_width = 36
         frame_height = 24
         frame_gutter_x = 2
-        frame_gutter_y = (35 - frame_height) + 2
+        frame_gutter_y = (35 - frame_height) + 1
         frames_per_row = 5
         rows_per_sheet = math.ceil(len(self.photos) / frames_per_row)
 
         # Create the contact sheet canvas
         contact_sheet = Image.new('RGB', (a4_width, a4_height), (0, 0, 0))
+        draw = ImageDraw.Draw(contact_sheet)
 
-        # Calculate total grid dimensions (in mm)
+        # Header layout
+        header_height = self.px(10)  # 10 mm header height
+        header_font_size = self.px(4)  # 4 mm font size
+        header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=header_font_size)
+
+        # Header text
+        header_text = f"Contact Sheet - {self.photoCount} Photos"
+
+        # Left-aligned, vertically centered in the header region
+        header_x = self.px(10)  # 10 mm left margin
+        header_y = header_height // 2  # middle of the header region
+
+        # Draw the header text
+        draw.text((header_x, header_y), header_text, font=header_font, fill=(255, 255, 255), anchor="lm")
+        # Calculate total grid width in mm (horizontal remains fixed)
         total_width_mm = frames_per_row * frame_width + (frames_per_row - 1) * frame_gutter_x
-        total_height_mm = rows_per_sheet * frame_height + (rows_per_sheet - 1) * frame_gutter_y
-
-        # Convert to pixels
         total_width_px = self.px(total_width_mm)
-        total_height_px = self.px(total_height_mm)
 
-        # Calculate buffers
+        # Calculate horizontal buffer (center grid horizontally)
         x_buffer = (a4_width - total_width_px) // 2
-        y_buffer = (a4_height - total_height_px) // 2
-
-        # Generate coordinates directly in px
         x_coords = [x_buffer + i * (self.px(frame_width) + self.px(frame_gutter_x)) for i in range(frames_per_row)]
-        y_coords = [y_buffer + i * (self.px(frame_height) + self.px(frame_gutter_y)) for i in range(rows_per_sheet)]
+
+        # Vertical layout: dynamically space rows within remaining vertical space
+        # frame_h_px = self.px(frame_height)
+        # available_height_px = a4_height - header_height
+        # vertical_space_px = (available_height_px - rows_per_sheet * frame_h_px) // (rows_per_sheet + 1)
+        # y_coords = [header_height + vertical_space_px * (i + 1) + frame_h_px * i for i in range(rows_per_sheet)]
+
+        # Vertical layout: fixed spacing based on frame_gutter_y
+        frame_h_px = self.px(frame_height)
+        row_spacing_px = self.px(frame_gutter_y)
+
+        y_coords = [header_height + (frame_h_px + row_spacing_px) * i for i in range(rows_per_sheet)]
 
         # Target thumbnail size
         thumb_size = (self.px(frame_width), self.px(frame_height))
@@ -117,8 +136,9 @@ class FilmRoll:
                     thumb_w, thumb_h = img.size
 
                     # Load font
-                    text_size = self.px(3)
-                    font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=text_size)
+                    text_size = self.px(2.5)
+                    # font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=text_size)
+                    font = ImageFont.truetype("fonts/helvetica-neue-55/HelveticaNeueBold.ttf", size=text_size)
                     line_height = font.getbbox("Ag")[3] + 4  # estimate one line height with padding
 
                     # Add space above and below the image for metadata
@@ -135,22 +155,24 @@ class FilmRoll:
                     draw = ImageDraw.Draw(txt_layer)
 
                     # Sample metadata (can be passed later)
-                    t_date    = "23-12-25"
-                    t_framenr = "01"
+                    t_date    = "23/12/25"
+                    t_framenr = "#36"
                     t_stock   = "G200"
-                    t_camera  = "Nikon F3"
+                    t_camera  = "F3"
                     t_lens    = "50/1.4"
                     t_rating  = "3s"
+                    # text_color = (215, 107, 46, 255)  # #D76B2E
+                    text_color = (252, 194, 120, 255)  # #FCC278
 
                     # Top text (above thumbnail)
-                    draw.text((0, top_pad // 2), t_date, font=font, fill=(255, 255, 255, 255), anchor="lm")
-                    draw.text((thumb_w // 2, top_pad // 2), t_framenr, font=font, fill=(255, 255, 255, 255), anchor="mm")
-                    draw.text((thumb_w, top_pad // 2), t_stock, font=font, fill=(255, 255, 255, 255), anchor="rm")
+                    draw.text((0, top_pad // 2), t_date, font=font, fill=text_color, anchor="lm")
+                    draw.text((thumb_w // 2, top_pad // 2), t_framenr, font=font, fill=text_color, anchor="mm")
+                    draw.text((thumb_w, top_pad // 2), t_stock, font=font, fill=text_color, anchor="rm")
 
                     # Bottom text (below thumbnail)
-                    draw.text((0, total_h - bottom_pad // 2), t_camera, font=font, fill=(255, 255, 255, 255), anchor="lm")
-                    draw.text((thumb_w // 2, total_h - bottom_pad // 2), t_lens, font=font, fill=(255, 255, 255, 255), anchor="mm")
-                    draw.text((thumb_w, total_h - bottom_pad // 2), t_rating, font=font, fill=(255, 255, 255, 255), anchor="rm")
+                    draw.text((0, total_h - bottom_pad // 2), t_camera, font=font, fill=text_color, anchor="lm")
+                    draw.text((thumb_w // 2, total_h - bottom_pad // 2), t_lens, font=font, fill=text_color, anchor="mm")
+                    draw.text((thumb_w, total_h - bottom_pad // 2), t_rating, font=font, fill=text_color, anchor="rm")
 
                     # Composite base and text layer
                     out = Image.alpha_composite(base, txt_layer)
@@ -164,13 +186,20 @@ class FilmRoll:
         print("Preprocessing images in parallel...")
         with ThreadPoolExecutor() as executor:
             thumbnails = list(executor.map(prepare_thumbnail, self.photos))
-
+        
+        random_shift = self.px(0)
+        row_shifts = [random.randint(-random_shift, random_shift) for _ in range(rows_per_sheet)]
         # Paste thumbnails into contact sheet
         print("Compositing contact sheet...")
         for i, thumb in enumerate(thumbnails):
             if thumb is not None:
-                x = x_coords[i % frames_per_row]
-                y = y_coords[i // frames_per_row]
+                row = i // frames_per_row
+                col = i % frames_per_row
+
+                # Apply per-row horizontal shift
+                x = x_coords[col] + row_shifts[row]
+                y = y_coords[row]
+
                 print(f"Pasting frame {i} at ({x}, {y})")
                 contact_sheet.paste(thumb, (x, y))
             else:
