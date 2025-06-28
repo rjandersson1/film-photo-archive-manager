@@ -1,0 +1,249 @@
+# Import libraries
+import os
+from tkinter import Tk
+from tkinter.filedialog import askdirectory
+from PIL import Image, ImageDraw, ImageFont
+import math
+from concurrent.futures import ThreadPoolExecutor
+import random
+
+def main():
+    renderer = Renderer(film_roll=None)  # Placeholder for FilmRoll object
+    renderer.canvas, renderer.draw = renderer.build_canvas()
+
+    renderer.rows = 7
+    renderer.cols = 5
+    renderer.build_grid()
+    renderer.render_rebates()
+    renderer.render_images()  
+
+    # Show canvas to user (open file)
+    renderer.canvas.show()  # This will open the default image viewer with the canvas
+
+class Renderer:
+    def __init__(self, film_roll):
+        self.film_roll = film_roll
+        self.debug = False
+
+        # Properties
+        # Sheet properties
+        self.canvas = None
+        self.draw = None
+        self.rows = None
+        self.cols = None
+        self.sheet_size = {
+            'width': 2480,  # A4 at 300 DPI
+            'height': 3508  # A4 at 300 DPI
+        }
+        self.sheet_margins = { # margin['top']
+            'top': 150,     # ~0.33" (8.5 mm)
+            'bottom': 100,  # a bit larger for captions or notes
+            'left': 100,
+            'right': 100
+        }
+        self.grid = []
+        self.grid_centered = []
+
+        # Frame properties
+        self.film_formats = {135, 120, 110, 45, 810}
+        self.film_format = None
+        self.frame_formats = {
+            'half',     # 18×24 mm (half-frame 35mm)
+            'full',     # 24×36 mm (standard 35mm)
+            'panoramic',# 24×58 mm or 24×65 mm (XPan style)
+            '645',      # 56×42 mm (medium format 645)
+            '6x4.5',    # alias for 645
+            '6x6',      # 56×56 mm
+            '6x7',      # 56×70 mm
+            '6x8',      # 56×76 mm
+            '6x9',      # 56×84 mm
+            '6x12',     # 56×112 mm (panoramic MF)
+            '6x17',     # 56×168 mm (ultra-pan MF)
+            '6x24',     # 56×224 mm (rare panoramic)
+            '4x5',      # 102×127 mm (large format)
+            '5x7',      # 127×178 mm
+            '8x10',     # 203×254 mm
+            '11x14',    # 279×356 mm
+            'custom'    # catch-all for unusual sizes
+        }
+        self.frame_format = None
+        self.rebate_image_path = 'data/film_rebates/135-color.png'
+        self.rebate_image = Image.open(self.rebate_image_path)
+        self.rebate_width, self.rebate_height = self.rebate_image.size
+        self.rebate_height = self.rebate_height + self.px(5)
+        self.rebate_center = (round(self.rebate_width / 2), round(self.rebate_height / 2))
+        self.rebate_header_coords = (425, 27, 12, 0) # w,h,x,y
+        self.rebate_footer_coords = (425, 27, 12, 386) # w,h,x,y
+
+        # Header
+        self.header = f"string"
+        self.header_font_size = 12
+        self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=self.header_font_size)
+
+        # Roll Metadata
+        self.film_stock = None
+        self.camera_model = None
+        self.date_start = None
+        self.date_end = None
+        self.duration = None
+        self.frame_count = 0 # individual frames
+        self.photo_count = 0 # including edits, duplicates, etc.
+        self.metadata_font_size = self.rebate_header_coords[1] - 2
+        self.metadata_font = ImageFont.truetype("fonts/helvetica-neue-55/HelveticaNeueBold.ttf", size=self.metadata_font_size)
+        self.metdata_font_color = {
+            'default': (255, 255, 255, 255),  # white
+            'P400_1': (252, 194, 120, 255),  # #FCC278
+            'P400_2': (215, 107, 46, 255),  # #D76B2E
+            'K400_1': (143, 143, 143, 255)  # #8F8F8F
+        }
+
+    # Methods
+    # Create canvas for contact sheet. Returns image object and ImageDraw object.
+    def build_canvas(self):
+        debug = True
+        # Build a blank canvas with ImageDraw.draw
+        canvas = Image.new("RGBA", (self.sheet_size['width'], self.sheet_size['height']), (0, 0, 0, 255))
+        if self.debug:
+            canvas = Image.new("RGBA", (self.sheet_size['width'], self.sheet_size['height']), (0, 0, 255, 255))
+        draw = ImageDraw.Draw(canvas)
+
+        if self.debug:
+            # Draw guidelines for debugging
+            def draw_guideline(x, y, w, orientation, sheet_size, draw):
+                """
+                Draws a white guideline with width `w` at (x, y), spanning the canvas.
+                - orientation: 'horizontal' or 'vertical'
+                - sheet_size: dict with 'width' and 'height' in pixels
+                - draw: ImageDraw.Draw object
+                """
+                if orientation == 'horizontal':
+                    draw.line([(0, y), (sheet_size['width'], y)], fill=(255, 255, 255, 255), width=w)
+                elif orientation == 'vertical':
+                    draw.line([(x, 0), (x, sheet_size['height'])], fill=(255, 255, 255, 255), width=w)
+
+            draw_guideline(self.sheet_margins['left'], 0, 2, 'vertical', self.sheet_size, draw)
+            draw_guideline(self.sheet_size['width'] - self.sheet_margins['right'], 0, 2, 'vertical', self.sheet_size, draw)
+            draw_guideline(0, self.sheet_margins['top'], 2, 'horizontal', self.sheet_size, draw)
+            draw_guideline(0, self.sheet_size['height'] - self.sheet_margins['bottom'], 2, 'horizontal', self.sheet_size, draw)
+
+        self.canvas = canvas
+        self.draw = draw
+        return canvas, draw
+    
+    def build_grid(self):
+        debug = True
+        # Create a grid for the center points of each image.
+        # Defined by rows x cols. (grab from self.rows self.cols)
+        # Col spacing (from left of canvas): self.sheet_margins['left'] + round(self.rebate_width / 2)
+        # Subsequent col spacing: ++self.rebate_width
+        # Row spacing: (from top of canvas): self.mnargin['top'] + round(self.rebate_height / 2)
+        # Subsequent row spacing: ++self.rebate_height
+        # draw a 8px diameter cross at the center coordinate for each.
+        # build grid as an array of x,y coordinates corresponding to the self.frame_count. (eg. grid[4] = (x ,y) corresponds to 5th frame coordinate.)
+
+        # Build grid of center points and draw crosses
+        self.grid = []
+        self.grid_centered = []
+
+        for row in range(self.rows):
+            for col in range(self.cols):
+                x = self.sheet_margins['left'] + round(self.rebate_width / 2) + col * self.rebate_width
+                y = self.sheet_margins['top'] + round(self.rebate_height / 2) + row * self.rebate_height
+
+                self.grid_centered.append((x, y))
+        # Draw crosses at each grid point
+                if self.debug:
+                    # Draw 8px cross centered at (x, y)
+                    cross_len = 16  # half of 8px
+                    self.draw.line([(x - cross_len, y), (x + cross_len, y)], fill=(255, 255, 255, 255), width=2)
+                    self.draw.line([(x, y - cross_len), (x, y + cross_len)], fill=(255, 255, 255, 255), width=2)
+
+        # Convert grid center coordinates to top-left coordinates
+        self.grid = self.convert_grid(self.grid_centered)
+
+        # Draw top left corner of each frame as a 16px BLUE cross, width 2.
+        if self.debug:
+            for x, y in self.grid:
+                cross_len = 16
+                self.draw.line([(x - cross_len, y), (x + cross_len, y)], fill=(125, 125, 255, 255), width=2)
+                self.draw.line([(x, y - cross_len), (x, y + cross_len)], fill=(125, 125, 255, 255), width=2)
+
+        # Draw rebate image border as width 1 rectangle GREEN centered on each self.grid point
+        if self.debug:
+            for x, y in self.grid:
+                # Draw a rectangle around the rebate image
+                self.draw.rectangle(
+                    [x, y, x + self.rebate_width, y + self.rebate_height],
+                    outline=(0, 255, 0, 255),  # Green outline
+                    width=1
+                )  
+
+        return self.grid, self.grid_centered
+    
+    # convert mm to px
+    def px(self, value):
+        dpi = 300
+        return round(value * dpi / 25.4)  # Convert mm to inches, then to pixels
+    
+    def convert_grid(self, grid, width=None, height=None):
+        if width is None:
+            width = self.rebate_width
+        if height is None:
+            height = self.rebate_height
+        """
+        Convert grid of center coordinates to top-left coordinates for each frame.
+        :param grid: List of tuples (x, y) representing center coordinates.
+        :return: List of tuples (x, y) representing top-left coordinates.
+        """
+        converted = []
+        for x, y in grid:
+            top_left_x = x - round(width / 2)
+            top_left_y = y - round(height / 2)
+            converted.append((top_left_x, top_left_y))
+        return converted
+    
+
+    # Paste rebate .png onto canvas and return canvas, draw objects.
+    # grab image file from self.rebate_image_path
+    # place rebate images at each self.grid point.
+    def render_rebates(self):
+        # Load rebate image
+        if not self.rebate_image:
+            self.rebate_image = Image.open(self.rebate_image_path).convert("RGBA")
+
+        # Paste rebate image at each grid point
+        for x, y in self.grid:
+            # Calculate position to paste the rebate image
+            position = (x, y)
+            self.canvas.paste(self.rebate_image, position, self.rebate_image)
+
+        return self.canvas, self.draw
+    
+    # paste each image to the canvas at each grid point. Will need to convert from center to frame top/left coordinates.
+    # run through each coordinate in self.grid_centered, convert to topleft with self.convert_grid() and frame size is 300x200 px.
+    # if debug, draw a red rectangle for each image frame (as a placeholder unntil I get images
+    def render_images(self):
+        debug = True
+        frame_width = self.px(36)
+        frame_height = self.px(24)
+        vertical_offset = self.px(2.5) # TODO: why are the coordinates off by 2.5mm?
+
+        #convert grid
+        grid = self.convert_grid(self.grid_centered, width=frame_width, height=frame_height)
+        # Placeholder for image rendering logic
+        for i, (x, y) in enumerate(self.grid):
+            top_left_x, top_left_y = grid[i]
+            if self.debug:
+                # Draw a red rectangle as a placeholder for the image
+                self.draw.rectangle(
+                    [top_left_x, top_left_y - vertical_offset, top_left_x + frame_width, top_left_y + frame_height - vertical_offset],
+                    outline=(255, 0, 0, 255),  # Red outline
+                    fill=(255, 0, 0, 64),      # Semi-transparent red fill
+                    width=2
+                )
+
+        return self.canvas, self.draw
+        
+
+if __name__ == "__main__":
+    main()
