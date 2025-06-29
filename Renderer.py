@@ -1,3 +1,11 @@
+# Todo
+# build contact sheet headers
+# work on metadata headers
+# merge with film roll
+# automatically detect film format and stock
+# build other contact sheets (6x6, 6x7)
+
+
 # Import libraries
 import os
 from tkinter import Tk
