@@ -255,6 +255,7 @@ class Renderer:
         #convert grid
         grid = self.convert_grid(self.grid_centered, width=frame_width, height=frame_height)
         # Placeholder for image rendering logic
+        print(sorted(self.film_roll.image_data.keys()))
         for i, (x, y) in enumerate(self.grid):
             top_left_x, top_left_y = grid[i]
             if self.debug:
@@ -265,8 +266,33 @@ class Renderer:
                     fill=(255, 0, 0, 64),      # Semi-transparent red fill
                     width=2
                 )
+            else:
+                if i > self.film_roll.count - 1:
+                    return
+                print(i)
+                path = self.film_roll.image_data[i]['path']
+                try:
+                    with Image.open(path) as img:
+                        # Rotate if portrait
+                        if img.height > img.width:
+                            img = img.rotate(90, expand=True)
 
-        return self.canvas, self.draw
+                        # Build thumbnail
+                        img.thumbnail((frame_width, frame_height), Image.LANCZOS)
+
+                        # Calculate paste position to center it inside the frame box
+                        paste_x = top_left_x
+                        paste_y = top_left_y - vertical_offset
+
+                        self.canvas.paste(img, (int(paste_x), int(paste_y)))
+                except Exception as e:
+                    print(f"Error loading image {path}: {e}")
+
+
+
+
+
+
 
     def build_metadata(self):
         roll = self.film_roll
@@ -340,6 +366,9 @@ class Renderer:
 
     def update_header(self, size):
         self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=size)
+        
+
+
         
 
 if __name__ == "__main__":
