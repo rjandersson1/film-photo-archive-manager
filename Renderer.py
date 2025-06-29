@@ -28,6 +28,7 @@ def main():
     # Show canvas to user (open file)
     renderer.canvas.show()  # This will open the default image viewer with the canvas
 
+
 class Renderer:
     def __init__(self, film_roll):
         self.film_roll = film_roll
@@ -84,9 +85,10 @@ class Renderer:
         self.rebate_footer_coords = (425, 27, 12, 386) # w,h,x,y
 
         # Header
-        self.header = f"string"
-        self.header_font_size = 12
-        self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=self.header_font_size)
+        self.header = []
+        self.header_font_size = [60,40,30]
+        self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=2)
+        # update font size with self.header_update(size)
 
         # Roll Metadata
         self.film_stock = None
@@ -106,6 +108,20 @@ class Renderer:
         }
 
     # Methods
+    def run(self):
+        print('\n\n\nRunning renderer...\n')
+        self.build_canvas()
+        self.rows = 7
+        self.cols = 5
+        self.build_grid()
+        self.render_rebates()
+        self.render_images()
+        self.build_metadata()
+        self.build_header()
+        self.render_header()
+
+        self.canvas.show()
+
     # Create canvas for contact sheet. Returns image object and ImageDraw object.
     def build_canvas(self):
         debug = True
@@ -251,6 +267,79 @@ class Renderer:
                 )
 
         return self.canvas, self.draw
+
+    def build_metadata(self):
+        roll = self.film_roll
+        self.film_stock = roll.stock
+        self.film_stk = roll.stk
+        self.camera_model = roll.camera
+        self.date_start = roll.startDate
+        self.date_end = roll.endDate
+        self.duration = roll.duration
+        self.frame_count = 0 # individual frames
+        self.photo_count = roll.count
+        self.roll_path = roll.directory
+        self.roll_index = roll.index
+        self.roll_title = roll.title
+        self.roll_format = roll.format
+
+    def build_header(self):
+        # Line 1: Large, contains index, title
+        idx = self.roll_index
+        tit = self.roll_title
+
+        # Line 2: Medium, date start, date end, stock, camera, frame count,
+        stk = self.film_stock
+        cam = self.camera_model
+        cnt = self.frame_count
+
+        # Line 3: file path
+        path = self.roll_path
+        t0 = self.date_start
+        t1 = self.date_end
+        dt = self.duration
+
+        header_line_1 = f'{idx}_{tit}'
+        header_line_2 = f'{stk}_{cam}_#{cnt}'
+        header_line_3 = f'{t0}_{t1}_{dt}_{path}'
+
+        self.header.append(header_line_1)
+        self.header.append(header_line_2)
+        self.header.append(header_line_3)
+    
+
+
+
+
+        self.sheet_margins = { # margin['top']
+            'top': 150,     # ~0.33" (8.5 mm)
+            'bottom': 100,  # a bit larger for captions or notes
+            'left': 100,
+            'right': 100
+        }
+
+
+
+
+    def render_header(self):
+        # run through line by line and draw each string in header at the top of the page
+        for i, string in enumerate(self.header):
+            size = self.header_font_size[i]
+            self.update_header(size)
+            color = (252, 194, 120, 255)  # #FCC278
+            font = self.header_font
+            print(i)
+            print(size)
+            print(string)
+            print('\n')
+            pos_y = self.sheet_margins['top'] / 3 + i * size
+            pos_x = self.sheet_margins['left'] + 10
+            self.draw.text((pos_x, pos_y), string, font=font, fill=color, anchor="lm")
+        
+        return self.canvas, self.draw
+
+    def update_header(self, size):
+        self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=size)
         
 
 if __name__ == "__main__":
