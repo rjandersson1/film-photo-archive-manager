@@ -33,6 +33,10 @@ class RollMetadata:
         self.countJpg = "Unknown"
         self.countRaw = "Unknown"
 
+        #TODO: implement
+        self.format = "Unknown"
+        
+
         # Processes all files and builds metadata list
         self._process_files()
         if self.jpgPath is None:
@@ -491,6 +495,8 @@ class RollMetadata:
             image_data[index] = {
                 'date': date,
                 'time': time,
+                'path': photo_path,
+                'filename': fileName,
                 'cameraBrand': cameraBrand,
                 'cameraModel': cameraModel,
                 'stock': stock,
