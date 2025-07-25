@@ -111,14 +111,15 @@ class Renderer:
     def run(self):
         print('\n\n\nRunning renderer...\n')
         self.build_canvas()
-        self.rows = 7
         self.cols = 5
+        # self.rows = 7
+        self.build_metadata()
+        self.build_header()
         self.build_grid()
         self.render_rebates()
         self.render_images()
-        self.build_metadata()
-        self.build_header()
         self.render_header()
+        self.render_image_metadata()
 
         self.canvas.show()
 
@@ -168,6 +169,7 @@ class Renderer:
         # Build grid of center points and draw crosses
         self.grid = []
         self.grid_centered = []
+        self.rows = math.ceil(self.film_roll.countJpg / self.cols)
 
         for row in range(self.rows):
             for col in range(self.cols):
@@ -226,6 +228,15 @@ class Renderer:
             converted.append((top_left_x, top_left_y))
         return converted
     
+    def convert_grid_cell(self, cell, width, height):
+        x0 = cell[0]
+        y0 = cell[1]
+        x1 = x0 - round(width / 2)
+        y1 = y0 - round(height / 2) - self.px(2.5) # idk why but need to offset vertically
+        cell = (x1, y1)
+        return cell
+
+    
 
     # Paste rebate .png onto canvas and return canvas, draw objects.
     # grab image file from self.rebate_image_path
@@ -247,46 +258,66 @@ class Renderer:
     # run through each coordinate in self.grid_centered, convert to topleft with self.convert_grid() and frame size is 300x200 px.
     # if debug, draw a red rectangle for each image frame (as a placeholder unntil I get images
     def render_images(self):
-        debug = True
         frame_width = self.px(36)
         frame_height = self.px(24)
-        vertical_offset = self.px(2.5) # TODO: why are the coordinates off by 2.5mm?
+        vertical_offset = self.px(2.5)
 
-        #convert grid
+        # Convert grid
         grid = self.convert_grid(self.grid_centered, width=frame_width, height=frame_height)
-        # Placeholder for image rendering logic
-        print(sorted(self.film_roll.image_data.keys()))
-        for i, (x, y) in enumerate(self.grid):
-            top_left_x, top_left_y = grid[i]
-            if self.debug:
-                # Draw a red rectangle as a placeholder for the image
+
+        if self.debug:
+            print("DEBUG ON")
+            for i, (x, y) in enumerate(self.grid):
+                top_left_x, top_left_y = grid[i]
                 self.draw.rectangle(
-                    [top_left_x, top_left_y - vertical_offset, top_left_x + frame_width, top_left_y + frame_height - vertical_offset],
-                    outline=(255, 0, 0, 255),  # Red outline
-                    fill=(255, 0, 0, 64),      # Semi-transparent red fill
+                    [top_left_x, top_left_y - vertical_offset,
+                    top_left_x + frame_width, top_left_y + frame_height - vertical_offset],
+                    outline=(255, 0, 0, 255),
+                    fill=(255, 0, 0, 64),
                     width=2
                 )
-            else:
-                if i > self.film_roll.count - 1:
-                    return
-                print(i)
-                path = self.film_roll.image_data[i]['path']
-                try:
-                    with Image.open(path) as img:
-                        # Rotate if portrait
-                        if img.height > img.width:
-                            img = img.rotate(90, expand=True)
+            return
 
-                        # Build thumbnail
-                        img.thumbnail((frame_width, frame_height), Image.LANCZOS)
+        # Helper function to process a single image
+        def load_and_prepare_image(i):
+            if i > self.film_roll.countJpg - 1 or i > len(grid) - 1:
+                return None  # Skip invalid index
 
-                        # Calculate paste position to center it inside the frame box
-                        paste_x = top_left_x
-                        paste_y = top_left_y - vertical_offset
+            path = self.film_roll.image_data[i]['path']
+            exposure = self.film_roll.image_data[i]['exposure']
+            try:
+                with Image.open(path) as img:
+                    print(f"[THREAD] Processing image {exposure}...")
 
-                        self.canvas.paste(img, (int(paste_x), int(paste_y)))
-                except Exception as e:
-                    print(f"Error loading image {path}: {e}")
+                    # Rotate if portrait
+                    if img.height > img.width:
+                        img = img.rotate(90, expand=True)
+
+                    # Resize
+                    img.thumbnail((frame_width, frame_height), Image.LANCZOS)
+
+                    # Convert for pasting
+                    img = img.convert("RGBA")
+
+                    # Convert center coordinate to top-left paste location
+                    converted_cell = self.convert_grid_cell(self.grid_centered[exposure], img.width, img.height)
+                    paste_x, paste_y = int(converted_cell[0]), int(converted_cell[1])
+
+                    return (img.copy(), paste_x, paste_y)  # copy to detach from context manager
+            except Exception as e:
+                print(f"[THREAD] Error loading image {exposure} ({path}): {e}")
+                return None
+
+        # Run all in parallel
+        print("Rendering images in parallel...")
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(load_and_prepare_image, range(len(self.grid))))
+
+        # Paste all images back onto canvas
+        for result in results:
+            if result:
+                img, x, y = result
+                self.canvas.paste(img, (x, y), img)  # use img as mask for transparency
 
 
 
@@ -303,7 +334,7 @@ class Renderer:
         self.date_end = roll.endDate
         self.duration = roll.duration
         self.frame_count = 0 # individual frames
-        self.photo_count = roll.count
+        self.photo_count = roll.countJpg
         self.roll_path = roll.directory
         self.roll_index = roll.index
         self.roll_title = roll.title
@@ -317,33 +348,21 @@ class Renderer:
         # Line 2: Medium, date start, date end, stock, camera, frame count,
         stk = self.film_stock
         cam = self.camera_model
-        cnt = self.frame_count
+        cnt = self.photo_count
 
         # Line 3: file path
         path = self.roll_path
-        t0 = self.date_start
+        t0 = self.date_start.date()
         t1 = self.date_end
         dt = self.duration
 
-        header_line_1 = f'{idx}_{tit}'
-        header_line_2 = f'{stk}_{cam}_#{cnt}'
-        header_line_3 = f'{t0}_{t1}_{dt}_{path}'
+        header_line_1 = f'#{idx}   {tit}'
+        header_line_2 = f'{stk}   {cam}   #{cnt}'
+        header_line_3 = f'{t0}'
 
         self.header.append(header_line_1)
         self.header.append(header_line_2)
         self.header.append(header_line_3)
-    
-
-
-
-
-        self.sheet_margins = { # margin['top']
-            'top': 150,     # ~0.33" (8.5 mm)
-            'bottom': 100,  # a bit larger for captions or notes
-            'left': 100,
-            'right': 100
-        }
-
 
 
 
@@ -352,13 +371,9 @@ class Renderer:
         for i, string in enumerate(self.header):
             size = self.header_font_size[i]
             self.update_header(size)
-            color = (252, 194, 120, 255)  # #FCC278
+            color = (255, 255, 255, 255)  # #FCC278
             font = self.header_font
-            print(i)
-            print(size)
-            print(string)
-            print('\n')
-            pos_y = self.sheet_margins['top'] / 3 + i * size
+            pos_y = self.sheet_margins['top'] / 3 + i * size * 1.1
             pos_x = self.sheet_margins['left'] + 10
             self.draw.text((pos_x, pos_y), string, font=font, fill=color, anchor="lm")
         
@@ -367,6 +382,39 @@ class Renderer:
     def update_header(self, size):
         self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=size)
         
+    def render_image_metadata(self):
+        grid = self.grid
+        roll = self.film_roll
+        for i in range(roll.countJpg):
+            cell = grid[i]
+            xl = cell[0] + 12
+            xm = cell[0] + round(self.rebate_header_coords[0] / 2)
+            xr = cell[0] + self.rebate_header_coords[0]
+            yt = cell[1]
+            yb = cell[1] + self.rebate_footer_coords[3]
+
+
+
+            metadata = roll.image_data[i]
+            idx = str(i)
+            date = str(metadata['date']).split('20')[-1]
+            lens = str(round(metadata['focalLength']))
+            cam = str(metadata['cameraModel']) + f"/{lens}"
+            stk = str(metadata['stock'])
+            rate = str(metadata['rating']) + "s"
+
+
+            # print text onto image
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (252, 194, 120, 255)  # #FCC278
+            # anchor="mm"
+            self.draw.text((xm,yt), idx, font=font, fill=text_color, anchor="mt")
+            self.draw.text((xl, yt), cam, font=font, fill=text_color, anchor="lt")
+            self.draw.text((xr, yt), stk, font=font, fill=text_color, anchor="rt")
+            self.draw.text((xr, yb), rate, font=font, fill=text_color, anchor='rt')
+            self.draw.text((xl, yb), date, font=font, fill=text_color, anchor='lt')
+            # font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=30)
+            # self.draw.text((x, y + 50), lens, font=font, fill=text_color, anchor="mm")
 
 
         
