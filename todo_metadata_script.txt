@@ -11,3 +11,16 @@ metadata script todo
 - time to import
 - percentage complete on import (generally add more updates etc)
 - way to generate a digital contact sheet?
+
+-----------
+- move top info (eg. number) to top right, so when filed away it is easily read.
+- change dates to YY.MM.DD
+	--> done: scraped date string, split '20' and took [-1] from vec (lol)
+- cross reference completion status of roll metadata (list them all out on the back with a table of sorts)
+- build VC identifier
+- ensure images load in correct order
+	--> done: bug was that index != exposure number, it was just file load order. Needed to scrape exposure # from filename, then added it to self.film_roll.image_data[i]['exposure']
+- finalize BW
+- build objects for each film emulsion; eg. G200 = (font color, font type)
+	- have different rolls have ever so slightly different rebate colors
+- 
