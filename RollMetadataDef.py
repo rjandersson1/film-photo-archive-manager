@@ -426,6 +426,7 @@ class RollMetadata:
             date_str = exif_data.get(36867) if exif_data else None
             date = '.'.join(date_str.split(" ")[0].split(':')) if date_str else None
             time = date_str.split(" ")[1] if date_str else None
+            exposure = int(photo.split(" - ")[1]) - 1
 
             # # Check for duplicates in image_data TODO: I dont think there is any good way to count duplicates... too many photos have identical date/time
             # duplicate_found = False
@@ -493,6 +494,7 @@ class RollMetadata:
 
             # Store each image’s metadata in the dictionary with index as key
             image_data[index] = {
+                'exposure': exposure,
                 'date': date,
                 'time': time,
                 'path': photo_path,
