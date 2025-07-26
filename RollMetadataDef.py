@@ -7,6 +7,12 @@ from PIL.ExifTags import TAGS
 import re
 import glob
 from datetime import datetime
+from collections import OrderedDict
+from pathlib import Path
+import json
+import shutil
+import subprocess
+from typing import Iterable, Union
 
 
 
@@ -33,6 +39,8 @@ class RollMetadata:
         self.count = "Unknown"
         self.countJpg = "Unknown"
         self.countRaw = "Unknown"
+        self._exif_cache = {}
+        self.NEEDED_TAGS = ["IsMergedPanorama", "ConvertToGrayscale", "Megapixels", "ModifyDate"]
 
         #TODO: implement
         self.format = "Unknown"
@@ -46,6 +54,9 @@ class RollMetadata:
             return
 
         self.image_data = self._process_image_metadata()
+
+        # Check for virtual copies
+        self._virtualCopy_identifier()
 
         # Attribute list of items in roll
         self._attribute_list = {
@@ -417,85 +428,96 @@ class RollMetadata:
         image_data = {}
         index = -1
         images_removed = 0
-        
+
         for photo in os.listdir(self.jpgPath):
-            if not photo.endswith('.jpg'): continue # Skip file if not jpg 
+            if not photo.lower().endswith('.jpg'):
+                continue  # Skip if not jpg
+
             photo_path = os.path.join(self.jpgPath, photo)
-            fileSize = os.path.getsize(photo_path)/(1024**2)
-            exif_data = Image.open(photo_path)._getexif()
+            fileSize = os.path.getsize(photo_path) / (1024**2)
 
-            # Gather date and check for duplicates
-            date_str = exif_data.get(36867) if exif_data else None
-            date = '.'.join(date_str.split(" ")[0].split(':')) if date_str else None
-            time = date_str.split(" ")[1] if date_str else None
-            exposure = int(photo.split(" - ")[1]) - 1
+            try:
+                exif_data = Image.open(photo_path)._getexif()
+            except Exception:
+                exif_data = None
 
-            # # Check for duplicates in image_data TODO: I dont think there is any good way to count duplicates... too many photos have identical date/time
-            # duplicate_found = False
-            # for item in image_data.values():
-            #     if item['date'] == date and item['time'] == time:
-            #         # print(f"[{self.index}] Dupe: {date} at {time} in [{photo}]")
-            #         duplicate_found = True
-            #         images_removed = images_removed + 1 #DEBUG
-            #         break
-            # if duplicate_found:
-            #     continue # skip if duplicate found
-            
-            index = index + 1
+            # Gather date/time
+            date_str = exif_data.get(36867) if exif_data else None  # DateTimeOriginal
+            if date_str:
+                # e.g. '2023:09:07 12:05:32' -> date '2023.09.07', time '12:05:32'
+                parts = date_str.split(' ')
+                date = '.'.join(parts[0].split(':')) if len(parts) > 0 else None
+                time = parts[1] if len(parts) > 1 else None
+            else:
+                date, time = None, None
 
-            # gather rest of exif_data
-            cameraBrand = exif_data.get(271) if exif_data else None
-            cameraModel = exif_data.get(272) if exif_data else None
-            iso = exif_data.get(34855) if exif_data else None
-            focalLength = exif_data.get(37386) if exif_data else None
-            lensBrand = exif_data.get(42035) if exif_data else None
-            lensModel = exif_data.get(42036) if exif_data else None
+            # defaults in case parsing fails
+            exposure = None
+            location = None
+            stock = None
+            rating = None
 
-            # Extract location, stock, rating from file name
-            fileName = photo.split(".jpg")[0]  # remove extension
+            fileName = photo[:-4]  # strip ".jpg"
 
-            if len(fileName.split(" - ")) == 1:  # Case 1
-                splitName = fileName.split(' ')
-                splitName = splitName[1:-1]  # trim off date and index
-                location = splitName[-1]
-                splitName = splitName[:-1]
-
-                # Extract stock
-                iso_list = []
-                for item in splitName:
-                    iso_list.append(item)
-                    try:
-                        int(item)  # Check if ISO number
-                        break
-                    except ValueError:
-                        continue
-                stock = ' '.join(iso_list)
+            # ---- filename parsing ----
+            # Case 1: 22-10-02 Ektar 100 Seebach 1.jpg
+            if ' - ' not in fileName:
+                splitName = fileName.split(' ')  # [22-10-02, Ektar, 100, Seebach, 1]
+                try:
+                    exposure = int(splitName[-1])
+                except Exception:
+                    exposure = None
+                location = splitName[-2] if len(splitName) >= 2 else None
+                stock = ' '.join(splitName[1:-2]) if len(splitName) > 3 else None
                 rating = None
-            else:  # Case 2
-                splitName = fileName.split(" - ")
 
-                if '#' in fileName:  # Case 2.1 [23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2]
-                    location = splitName[1]
-                    stock = splitName[2]
-                    splitName = splitName[3:]
+            # Case 2: 22-07-28 - 1 - Flims - Superia 400 -  - 5s.jpg
+            elif ' - ' in fileName and '#' not in fileName:
+                splitName = fileName.split(' - ')  # [22-07-28, 1, Flims, Superia 400, , 5s]
+                try:
+                    exposure = int(splitName[1])
+                except Exception:
+                    exposure = None
+                location = splitName[2] if len(splitName) > 2 else None
+                stock = splitName[3] if len(splitName) > 3 else None
+                last = splitName[-1] if splitName else ''
+                rating = last.split('s')[0] if 's' in last else None
 
-                    if len(splitName) == 1:  # Case 2.1.1 [Maxxum 7000 18-55mm #1]
-                        rating = None
-                    else:  # Case 2.1.2 ['F3', '3s', '#2']
-                        rating = splitName[1].split('s')[0]
-                else:  # Case 2.2 [23-06-04 - 1 - Falsterbo - P400 - F3 50mm1.4 - 2s]
-                    try:
-                        location = splitName[2]
-                        stock = splitName[3]
-                        rating = splitName[-1].split('s')[0]
-                    except IndexError:
-                        print(f"Error: out of bounds for {self.index} {splitName}")
-                        location = "error"
-                        stock = "error"
-                        rating = "error"
+            # Case 3: 23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2.jpg
+            elif ' - ' in fileName and '#' in fileName:
+                splitName = fileName.split(' - ')  # [23-01-01, Zurich, Ektar 100, F3, 3s, #2]
+                try:
+                    exposure = int(splitName[-1].split('#')[-1])
+                except Exception:
+                    exposure = None
+                location = splitName[1] if len(splitName) > 1 else None
+                stock = splitName[2] if len(splitName) > 2 else None
+                rating_field = splitName[-2] if len(splitName) > 1 else ''
+                rating = rating_field.split('s')[0] if 's' in rating_field else None
 
-            # Store each image’s metadata in the dictionary with index as key
-            image_data[index] = {
+            else:
+                print(f"Error: Unrecognized file name format for {photo}. Skipping this file.")
+                exposure = None
+                location = "error"
+                stock = "error"
+                rating = None
+
+            index += 1
+
+            cameraBrand   = exif_data.get(271)    if exif_data else None
+            cameraModel   = exif_data.get(272)    if exif_data else None
+            iso           = exif_data.get(34855)  if exif_data else None
+            focalLength   = exif_data.get(37386)  if exif_data else None
+            lensBrand     = exif_data.get(42035)  if exif_data else None
+            lensModel     = exif_data.get(42036)  if exif_data else None
+
+            # Grab file metadata & exif data (TODO: very slow to process exif for each image. parallelize or process in bulk)
+            exif_data = "TODO"
+            # exif_data = self._process_image_exif(photo_path, ["DateTimeOriginal", "Make", "Model"]) if exif_data else {}
+            # meta_data = "TODO"
+            meta_data = Image.open(photo_path)._getexif()
+
+            image_data[exposure] = {
                 'exposure': exposure,
                 'date': date,
                 'time': time,
@@ -510,11 +532,192 @@ class RollMetadata:
                 'focalLength': focalLength,
                 'location': location,
                 'rating': rating,
-                'fileSize': fileSize
+                'fileSize': fileSize,
+                'exif': exif_data,
+                'metadata': meta_data
             }
-        return image_data   
 
-    def get_info_image(self):
+        # ---- sort by date, then time ----
+        # Fill Nones so sorting doesn't crash; push Nones to the end by using a high sentinel.
+        sentinel_date = '9999.99.99'
+        sentinel_time = '99:99:99'
+        sorted_items = sorted(
+            image_data.items(),
+            key=lambda kv: (
+                kv[1]['date'] if kv[1]['date'] else sentinel_date,
+                kv[1]['time'] if kv[1]['time'] else sentinel_time
+            )
+        )
+
+        return OrderedDict(sorted_items)
+    
+
+    def _bulk_exif(self, paths, tags=None):
+        """
+        Fills self._exif_cache for the given paths using a single exiftool call.
+        If exiftool is unavailable, you can fall back to your existing get_exif,
+        but preferably do nothing (cache miss) and let checks handle it gracefully.
+        """
+        if not paths:
+            return
+
+        # Already cached? Skip.
+        to_fetch = [p for p in paths if p not in self._exif_cache]
+        if not to_fetch:
+            return
+
+        if shutil.which("exiftool"):
+            cmd = ["exiftool", "-j"]
+            if tags:
+                cmd += [f"-{t}" for t in tags]
+            else:
+                cmd += ["-a", "-u", "-g1"]
+            cmd += to_fetch
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            data = json.loads(result.stdout or "[]")
+            for d in data:
+                src = d.get("SourceFile")
+                if src:
+                    self._exif_cache[src] = d
+        else:
+            # (Optional) fallback loop using your existing single-file get_exif
+            for p in to_fetch:
+                self._exif_cache[p] = self.get_exif(p, tags=tags)
+
+    def _virtualCopy_identifier(self):
+        # timestamp -> list[ {exposure, path} ]
+        timestamp_dict = {}
+
+        for _, data in self.image_data.items():
+            date = data.get('date')
+            time = data.get('time')
+            exp  = data.get('exposure')
+            if date and time:
+                ts = f"{date} {time}"
+                timestamp_dict.setdefault(ts, []).append({"exposure": exp, "path": data["path"]})
+
+        # only timestamps with duplicates
+        duplicates = {k: v for k, v in timestamp_dict.items() if len(v) > 1}
+
+        if not duplicates:
+            return False
+
+        # collect every file once, then fetch EXIF in bulk
+        unique_paths = {item["path"] for lst in duplicates.values() for item in lst}
+        self._bulk_exif(unique_paths, tags=self.NEEDED_TAGS)
+
+        for timestamp, items in duplicates.items():
+            if len(items) > 2:
+                # Find item with earliest ModifyDate
+                original_item = min(
+                    items,
+                    key=lambda x: self._exif_cache.get(x["path"], {}).get("ModifyDate", "9999:99:99 99:99:99")
+                )
+                exposure = original_item["exposure"]
+
+                print(f'[{self.index}]\tFound {len(items)} duplicates, keeping original #{exposure}')
+
+            fileA, fileB = items[0]["path"], items[1]["path"]
+            print(f"[{self.index}]\tDuplicates @ {timestamp}:\n\t\t[A] {os.path.basename(fileA)}\n\t\t[B] {os.path.basename(fileB)}")
+
+            if not self._check_pano_cached(fileA, fileB):
+                if not self._check_bnw_copy_cached(fileA, fileB):
+                    if not self._check_crop_copy_cached(fileA, fileB):
+                        print("\t\t❌❌❌ Could not ID virtual copy")
+        return True
+
+    def _check_pano_cached(self, fileA, fileB):
+        exifA = self._exif_cache.get(fileA, {})
+        exifB = self._exif_cache.get(fileB, {})
+
+        if exifA.get("IsMergedPanorama"):
+            print("\t\t--> [A] is a pano")
+            return fileA
+        if exifB.get("IsMergedPanorama"):
+            print("\t\t--> [B] is a pano")
+            return fileB
+        return 0
+
+    def _check_bnw_copy_cached(self, fileA, fileB):
+        exifA = self._exif_cache.get(fileA, {})
+        exifB = self._exif_cache.get(fileB, {})
+
+        a_bw = exifA.get("ConvertToGrayscale")
+        b_bw = exifB.get("ConvertToGrayscale")
+
+        if a_bw and not b_bw:
+            print("\t\t--> [A] is a bnw copy")
+            return fileA
+        if b_bw and not a_bw:
+            print("\t\t--> [B] is a bnw copy")
+            return fileB
+        return 0
+
+    def _check_crop_copy_cached(self, fileA, fileB):
+        exifA = self._exif_cache.get(fileA, {})
+        exifB = self._exif_cache.get(fileB, {})
+
+        mpxA = exifA.get("Megapixels")
+        mpxB = exifB.get("Megapixels")
+        dateA = exifA.get("ModifyDate")
+        dateB = exifB.get("ModifyDate")
+
+        if mpxA != mpxB:
+            # newer file = original (per your logic)
+            if dateA and dateB and dateA > dateB:
+                print("\t\t--> [B] is a crop")
+                return fileA
+            else:
+                print("\t\t--> [A] is a crop")
+                return fileB
+        return 0
+
+
+
+
+    def get_exif(self, path: str, tags: Union[str, Iterable[str], None] = None) -> str:
+        """
+        If `tags` is:
+        - None  -> return all metadata (EXIF/IPTC/XMP when exiftool is available)
+        - str   -> split on spaces/commas: "DateTimeOriginal Make Model LensModel"
+        - iterable -> use as-is (['DateTimeOriginal', 'Make', ...])
+
+        Returns a pretty-printed JSON string.
+        """
+        # Normalize tags to a list[str] or None
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.replace(',', ' ').split() if t.strip()]
+        elif tags is not None:
+            tags = list(tags)
+
+        if shutil.which("exiftool"):
+            # Build the exiftool command
+            cmd = ["exiftool", "-j"]
+            if tags:
+                cmd += [f"-{t}" for t in tags]
+            else:
+                # keep your original wide grab
+                cmd += ["-a", "-u", "-g1"]
+            cmd.append(path)
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            data = json.loads(result.stdout or "[]")
+            return data[0] if data else {}
+
+    def get_info_image(self, exposure=None):
         # Define headers and column widths
         headers = [
             "|Index", "|Date", "|Time", "|Camera Brand", "|Camera Model", "|Stock", "|ISO",
@@ -527,7 +730,24 @@ class RollMetadata:
         print(header_str)
         print("-" * sum(column_widths))  # Separator line matching total width
 
-        # Print each row of data with dynamically set column widths
+
+        # Filter image_data based on exposure # if provided
+        if exposure is not None:
+            if isinstance(exposure, (list, tuple, set)):
+                # Filter for any exposure in the list/tuple
+                self.image_data = {
+                    index: data
+                    for index, data in self.image_data.items()
+                    if data.get('exposure') in exposure
+                }
+            else:
+                # Filter for single exposure
+                self.image_data = {
+                    index: data
+                    for index, data in self.image_data.items()
+                    if data.get('exposure') == exposure
+                }
+
         for index, data in self.image_data.items():
             row_data = [
                 # index,
