@@ -1,0 +1,22 @@
+https://www.diffchecker.com/xHTr2ZJx/
+grab "Keywords" --> b&w, c41
+grab "DateCreated" --> should be identical
+grab "ConvertToGrayscale" --> can see if bw or not
+
+Panoramas:
+"Software": "Negative Lab Pro v2.1.2" (non pano)
+"Software": "Negative Lab Pro", (pano)
+
+
+  "XMP-aux": {
+    "IsMergedPanorama": true,
+    "LateralChromaticAberrationCorrectionAlreadyApplied": true,
+    "Lens": "55mm f/2.8 Micro Nikkor AIS"
+  },
+  
+    "XMP-panorama": {
+    "Transformation": "Cylindrical",
+    "VirtualFocalLength": 0.761065,
+    "VirtualImageXCenter": 0.474825,
+    "VirtualImageYCenter": 0.157322
+  },
