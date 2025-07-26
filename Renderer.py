@@ -116,11 +116,12 @@ class Renderer:
         self.build_metadata()
         self.build_header()
         self.build_grid()
+        print("Rendering images...")
         self.render_rebates()
         self.render_images()
         self.render_header()
         self.render_image_metadata()
-
+        print("Render complete! Opening file...")
         self.canvas.show()
 
     # Create canvas for contact sheet. Returns image object and ImageDraw object.
@@ -245,6 +246,7 @@ class Renderer:
         # Load rebate image
         if not self.rebate_image:
             self.rebate_image = Image.open(self.rebate_image_path).convert("RGBA")
+            # TODO: if self.roll.process == 'bnw': set image to bnw!
 
         # Paste rebate image at each grid point
         for x, y in self.grid:
@@ -312,7 +314,7 @@ class Renderer:
         print("Rendering images in parallel...")
         with ThreadPoolExecutor() as executor:
             results = list(executor.map(load_and_prepare_image, range(len(self.grid))))
-
+        print("Image processing complete")
         # Paste all images back onto canvas
         for result in results:
             if result:
@@ -339,6 +341,7 @@ class Renderer:
         self.roll_index = roll.index
         self.roll_title = roll.title
         self.roll_format = roll.format
+    
 
     def build_header(self):
         # Line 1: Large, contains index, title
@@ -402,19 +405,42 @@ class Renderer:
             cam = str(metadata['cameraModel']) + f"/{lens}"
             stk = str(metadata['stock'])
             rate = str(metadata['rating']) + "s"
+            font, text_color, bnw = self.process_emulsion(stk)
 
 
             # print text onto image
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (252, 194, 120, 255)  # #FCC278
-            # anchor="mm"
             self.draw.text((xm,yt), idx, font=font, fill=text_color, anchor="mt")
             self.draw.text((xl, yt), cam, font=font, fill=text_color, anchor="lt")
             self.draw.text((xr, yt), stk, font=font, fill=text_color, anchor="rt")
             self.draw.text((xr, yb), rate, font=font, fill=text_color, anchor='rt')
             self.draw.text((xl, yb), date, font=font, fill=text_color, anchor='lt')
-            # font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=30)
-            # self.draw.text((x, y + 50), lens, font=font, fill=text_color, anchor="mm")
+
+    def process_emulsion(self, stk):
+        if stk == "P400":
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (252, 194, 120, 255)  # #FCC278
+            bnw = 0
+            return font, text_color, bnw
+            
+        
+        if stk == "G200":
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (252, 194, 180, 255)  # #
+            bnw = 0
+            return font, text_color, bnw
+
+        if stk == "FP4":
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (255, 255, 255, 255)  # #
+            bnw = 1
+            return font, text_color, bnw
+
+        else: # ERROR
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (255, 0, 255, 255)  # #MAGENTA
+            bnw = 0
+            print(f"ERROR FONT FIND FOR EMULSION: {stk}")
+            return font, text_color, bnw
 
 
         
