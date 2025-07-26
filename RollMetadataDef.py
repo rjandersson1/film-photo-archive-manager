@@ -18,6 +18,7 @@ class RollMetadata:
         self.directory = directory # subfolder directory eg. \...\2022 - 135\2_22-06-12 Gold 200 Zurich
         self._collection = collection # address of collection that roll was added to 
         self.stock = "Unknown"  # Film stock (type of film used)
+        self.process = "Unkown" # Film development process (C41, E6, BNW)
         self.startDate = "Unknown"  # Start date for the roll
         self.endDate = "Unknown"  # Start date for the roll
         self.duration = "Unknown" # Duration between start and end of roll
@@ -50,6 +51,7 @@ class RollMetadata:
         self._attribute_list = {
             "Directory": self.directory,
             "Stock": self.stock,
+            "Process": self.process,
             "Start Date": self.startDate,
             "End Date": self.endDate,
             "Time Frame": self.duration,
@@ -528,7 +530,8 @@ class RollMetadata:
         # Print each row of data with dynamically set column widths
         for index, data in self.image_data.items():
             row_data = [
-                index,
+                # index,
+                data.get('exposure', 'N/A'),
                 data.get('date', 'N/A'),
                 data.get('time', 'N/A'),
                 data.get('cameraBrand', 'N/A'),
