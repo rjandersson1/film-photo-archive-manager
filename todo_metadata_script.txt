@@ -35,4 +35,10 @@ metadata script todo
 	--> render_rebates in Renderer.py needs to be updated on line 249: <# TODO: if self.roll.process == 'bnw': set image to bnw!>
 		--> do this maybe with adding 'process' to roll metadata based on stock.
 		....... nvm.... bigger development: needs to be done w work on RollMetadataDef.py and FilmCollectionDef.py, some # TODO functions need to be built and this can be implemented there...
-- 
+- rollA.get_info_images() needs to be reworked! index != exposure count... core issue in building the roll. Need to have a simple 'sort by date' option.
+
+
+--------------------------------------
+- reworked def _process_image_metadata(self) to correctly identify different fileName strings and extract relevant metadata, including exposure index.
+	- at the end, sort the dict by date-time.
+
