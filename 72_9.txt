@@ -1,0 +1,443 @@
+https://www.diffchecker.com/FtlShQSu/
+
+
+/usr/local/bin/python3 /Users/rja/Documents/Coding/film-photo-archive-manager/film_processor.py
+(base) rja@AIRM4 film-photo-archive-manager % /usr/local/bin/python3 /Users/rja/Documents/Coding/film-photo-archive-manager/film_processor.py
+Importing collection...
+Search for photos in ...\2023? [y/n]
+Warning: No JPG files found in .DS_Store
+Collection imported!
+JPG: 3.05 GB and 119 files
+RAW: 325.0 MB and 1 files
+Total: 3.37 GB and 120 files
+
+
+
+
+
+
+
+
+
+
+{
+  "SourceFile": "/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023/72_23-09-07 F3 P400 Flims and JPY/jpg/23-09-07 - 9 - Zug - P400 - F3 55mm2.8 - 3s.jpg",
+  "ExifTool": {
+    "ExifToolVersion": 13.3,
+    "Warning": "IPTCDigest is not current. XMP may be out of sync"
+  },
+  "System": {
+    "FileName": "23-09-07 - 9 - Zug - P400 - F3 55mm2.8 - 3s.jpg",
+    "Directory": "/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023/72_23-09-07 F3 P400 Flims and JPY/jpg",
+    "FileSize": "29 MB",
+    "FileModifyDate": "2024:11:02 09:21:34-06:00",
+    "FileAccessDate": "2025:07:26 11:56:20-06:00",
+    "FileInodeChangeDate": "2025:06:29 15:11:14-06:00",
+    "FilePermissions": "-rwx------"
+  },
+  "File": {
+    "FileType": "JPEG",
+    "FileTypeExtension": "jpg",
+    "MIMEType": "image/jpeg",
+    "ExifByteOrder": "Little-endian (Intel, II)",
+    "CurrentIPTCDigest": "a625f23552de478676ec57435e41566d",
+    "ImageWidth": 7480,
+    "ImageHeight": 4998,
+    "EncodingProcess": "Baseline DCT, Huffman coding",
+    "BitsPerSample": 8,
+    "ColorComponents": 3,
+    "YCbCrSubSampling": "YCbCr4:4:4 (1 1)"
+  },
+  "IFD0": {
+    "ImageDescription": "Nikon F3, Nikon 55mm f/2.8 Micro Nikkor AIS, Kodak Portra 400 400\r\n\r\n",
+    "Make": "Nikon",
+    "Model": "F3",
+    "XResolution": 72,
+    "YResolution": 72,
+    "ResolutionUnit": "inches",
+    "Software": "Negative Lab Pro v2.1.2",
+    "ModifyDate": "2024:11:02 16:18:31"
+  },
+  "ExifIFD": {
+    "ExposureTime": "1/250",
+    "FNumber": 8.0,
+    "ISO": 400,
+    "SensitivityType": "Recommended Exposure Index",
+    "RecommendedExposureIndex": 100,
+    "ExifVersion": "0231",
+    "DateTimeOriginal": "2023:09:07 12:03:29",
+    "CreateDate": "2023:09:25 21:36:58",
+    "OffsetTime": "+01:00",
+    "ShutterSpeedValue": "1/250",
+    "ApertureValue": 8.0,
+    "MaxApertureValue": 1.0,
+    "LightSource": "Unknown",
+    "FocalLength": "55.0 mm",
+    "ColorSpace": "sRGB",
+    "FocalPlaneXResolution": 2164.4328,
+    "FocalPlaneYResolution": 2164.4328,
+    "FocalPlaneResolutionUnit": "cm",
+    "FileSource": "Digital Camera",
+    "SceneType": "Directly photographed",
+    "CustomRendered": "Normal",
+    "ExposureMode": "Auto",
+    "WhiteBalance": "Auto",
+    "DigitalZoomRatio": 1,
+    "FocalLengthIn35mmFormat": "55 mm",
+    "SceneCaptureType": "Standard",
+    "Contrast": "Normal",
+    "Saturation": "Normal",
+    "Sharpness": "Normal",
+    "LensInfo": "55mm f/2.8",
+    "LensMake": "Nikon",
+    "LensModel": "55mm f/2.8 Micro Nikkor AIS"
+  },
+  "IFD1": {
+    "Compression": "JPEG (old-style)",
+    "XResolution": 72,
+    "YResolution": 72,
+    "ResolutionUnit": "inches",
+    "ThumbnailOffset": 940,
+    "ThumbnailLength": 15041,
+    "ThumbnailImage": "(Binary data 15041 bytes, use -b option to extract)"
+  },
+  "Photoshop": {
+    "XResolution": 72,
+    "DisplayedUnitsX": "inches",
+    "YResolution": 72,
+    "DisplayedUnitsY": "inches",
+    "PhotoshopThumbnail": "(Binary data 15041 bytes, use -b option to extract)",
+    "IPTCDigest": "4afa489a5f24855b15e0a7f8a1c3cc74"
+  },
+  "IPTC": {
+    "CodedCharacterSet": "UTF8",
+    "EnvelopeRecordVersion": 4,
+    "ApplicationRecordVersion": 4,
+    "Keywords": [
+      "Film: Colour",
+      "field",
+      "forest",
+      "meadows",
+      "morning light",
+      "rigi",
+      "Film Photography",
+      "Nikon",
+      "F3",
+      "Nikon",
+      "55mm f/2.8 Micro Nikkor AIS",
+      "Kodak Portra 400",
+      400,
+      "Negative Lab Pro",
+      "Digital Camera Scan",
+      "Sony A7RII, 55mm micro",
+      "Laptop",
+      "3D Print v6.1 (43MP)",
+      "C41"
+    ],
+    "DateCreated": "2023:09:07",
+    "TimeCreated": "12:03:29",
+    "DigitalCreationDate": "2023:09:25",
+    "DigitalCreationTime": "21:36:58",
+    "City": "Zug",
+    "Sub-location": "Zugerberg",
+    "Province-State": "Zug",
+    "Country-PrimaryLocationName": "Switzerland",
+    "Caption-Abstract": "Nikon F3, Nikon 55mm f/2.8 Micro Nikkor AIS, Kodak Portra 400 400\r\n\r\n"
+  },
+  "ICC-header": {
+    "ProfileCMMType": "Linotronic",
+    "ProfileVersion": "2.1.0",
+    "ProfileClass": "Display Device Profile",
+    "ColorSpaceData": "RGB ",
+    "ProfileConnectionSpace": "XYZ ",
+    "ProfileDateTime": "1998:02:09 06:49:00",
+    "ProfileFileSignature": "acsp",
+    "PrimaryPlatform": "Microsoft Corporation",
+    "CMMFlags": "Not Embedded, Independent",
+    "DeviceManufacturer": "Hewlett-Packard",
+    "DeviceModel": "sRGB",
+    "DeviceAttributes": "Reflective, Glossy, Positive, Color",
+    "RenderingIntent": "Perceptual",
+    "ConnectionSpaceIlluminant": "0.9642 1 0.82491",
+    "ProfileCreator": "Hewlett-Packard",
+    "ProfileID": 0
+  },
+  "ICC_Profile": {
+    "ProfileCopyright": "Copyright (c) 1998 Hewlett-Packard Company",
+    "ProfileDescription": "sRGB IEC61966-2.1",
+    "MediaWhitePoint": "0.95045 1 1.08905",
+    "MediaBlackPoint": "0 0 0",
+    "RedMatrixColumn": "0.43607 0.22249 0.01392",
+    "GreenMatrixColumn": "0.38515 0.71687 0.09708",
+    "BlueMatrixColumn": "0.14307 0.06061 0.7141",
+    "DeviceMfgDesc": "IEC http://www.iec.ch",
+    "DeviceModelDesc": "IEC 61966-2.1 Default RGB colour space - sRGB",
+    "ViewingCondDesc": "Reference Viewing Condition in IEC61966-2.1",
+    "Luminance": "76.03647 80 87.12462",
+    "Technology": "Cathode Ray Tube Display",
+    "RedTRC": "(Binary data 2060 bytes, use -b option to extract)",
+    "GreenTRC": "(Binary data 2060 bytes, use -b option to extract)",
+    "BlueTRC": "(Binary data 2060 bytes, use -b option to extract)"
+  },
+  "ICC-view": {
+    "ViewingCondIlluminant": "19.6445 20.3718 16.8089",
+    "ViewingCondSurround": "3.92889 4.07439 3.36179",
+    "ViewingCondIlluminantType": "D50"
+  },
+  "ICC-meas": {
+    "MeasurementObserver": "CIE 1931",
+    "MeasurementBacking": "0 0 0",
+    "MeasurementGeometry": "Unknown",
+    "MeasurementFlare": "0.999%",
+    "MeasurementIlluminant": "D65"
+  },
+  "XMP-x": {
+    "XMPToolkit": "Image::ExifTool 11.34"
+  },
+  "XMP-iptcCore": {
+    "IntellectualGenre": "F3 55mm2.8",
+    "Location": "Zugerberg",
+    "Scene": "P400"
+  },
+  "XMP-aux": {
+    "Lens": "55mm f/2.8 Micro Nikkor AIS"
+  },
+  "XMP-dc": {
+    "Description": "Nikon F3, Nikon 55mm f/2.8 Micro Nikkor AIS, Kodak Portra 400 400\r\n\r\n",
+    "Format": "image/jpeg",
+    "Subject": [
+      "Film: Colour",
+      "field",
+      "forest",
+      "meadows",
+      "morning light",
+      "rigi"
+    ]
+  },
+  "XMP-exif": {
+    "FlashFired": false,
+    "FlashFunction": false,
+    "FlashMode": "Unknown",
+    "FlashRedEyeMode": false,
+    "FlashReturn": "No return detection"
+  },
+  "XMP-exifEX": {
+    "LensModel": "55mm f/2.8 Micro Nikkor AIS"
+  },
+  "XMP-photoshop": {
+    "City": "Zug",
+    "Country": "Switzerland",
+    "DateCreated": "2023:09:07 12:03:29",
+    "State": "Zug"
+  },
+  "XMP-xmp": {
+    "CreateDate": "2023:09:25 21:36:58",
+    "CreatorTool": "Negative Lab Pro v2.1.2",
+    "Label": "Red",
+    "MetadataDate": "2024:11:02 16:18:31+01:00",
+    "ModifyDate": "2024:11:02 16:18:31+01:00",
+    "Rating": 3
+  },
+  "XMP-xmpMM": {
+    "DerivedFromDocumentID": "775AB9B5697B469CA187BC20CDB3E097",
+    "DerivedFromOriginalDocumentID": "775AB9B5697B469CA187BC20CDB3E097",
+    "DocumentID": "xmp.did:2d5b4039-e0fc-e847-893d-e57d34fe1330",
+    "HistoryAction": [
+      "derived",
+      "saved"
+    ],
+    "HistoryParameters": "converted from image/x-sony-arw to image/jpeg, saved to new location",
+    "HistoryChanged": "/",
+    "HistoryInstanceID": "xmp.iid:2d5b4039-e0fc-e847-893d-e57d34fe1330",
+    "HistorySoftwareAgent": "Adobe Photoshop Lightroom Classic 9.4 (Windows)",
+    "HistoryWhen": "2024:11:02 16:18:31+01:00",
+    "InstanceID": "xmp.iid:2d5b4039-e0fc-e847-893d-e57d34fe1330",
+    "OriginalDocumentID": "775AB9B5697B469CA187BC20CDB3E097",
+    "PreservedFileName": "DSC01664.ARW"
+  },
+  "XMP-crs": {
+    "AlreadyApplied": true,
+    "AutoLateralCA": 0,
+    "Blacks2012": 0,
+    "BlueHue": 0,
+    "BlueSaturation": 0,
+    "CameraProfile": "Negative Lab v2.0",
+    "CameraProfileDigest": "11D316B1AF6D7170DFFABE5037B63AF9",
+    "Clarity2012": 0,
+    "ColorNoiseReduction": 25,
+    "ColorNoiseReductionDetail": 50,
+    "ColorNoiseReductionSmoothness": 50,
+    "Contrast2012": 0,
+    "ConvertToGrayscale": false,
+    "CropAngle": 0,
+    "CropBottom": 0.966386,
+    "CropConstrainToWarp": 0,
+    "CropLeft": 0.039231,
+    "CropRight": 0.979984,
+    "CropTop": 0.02401,
+    "DefringeGreenAmount": 0,
+    "DefringeGreenHueHi": 60,
+    "DefringeGreenHueLo": 40,
+    "DefringePurpleAmount": 0,
+    "DefringePurpleHueHi": 70,
+    "DefringePurpleHueLo": 30,
+    "Dehaze": 0,
+    "Exposure2012": 0.0,
+    "GrainAmount": 0,
+    "GreenHue": 0,
+    "GreenSaturation": 0,
+    "HasCrop": true,
+    "HasSettings": true,
+    "Highlights2012": 0,
+    "HueAdjustmentAqua": 0,
+    "HueAdjustmentBlue": 0,
+    "HueAdjustmentGreen": 0,
+    "HueAdjustmentMagenta": 0,
+    "HueAdjustmentOrange": 0,
+    "HueAdjustmentPurple": 0,
+    "HueAdjustmentRed": 0,
+    "HueAdjustmentYellow": 0,
+    "LensManualDistortionAmount": 0,
+    "LensProfileEnable": 1,
+    "LensProfileSetup": "LensDefaults",
+    "LookName": "",
+    "LuminanceAdjustmentAqua": 0,
+    "LuminanceAdjustmentBlue": 0,
+    "LuminanceAdjustmentGreen": 0,
+    "LuminanceAdjustmentMagenta": 0,
+    "LuminanceAdjustmentOrange": 0,
+    "LuminanceAdjustmentPurple": 0,
+    "LuminanceAdjustmentRed": 0,
+    "LuminanceAdjustmentYellow": 0,
+    "LuminanceSmoothing": 0,
+    "OverrideLookVignette": false,
+    "ParametricDarks": 0,
+    "ParametricHighlightSplit": 75,
+    "ParametricHighlights": 0,
+    "ParametricLights": 0,
+    "ParametricMidtoneSplit": 50,
+    "ParametricShadowSplit": 25,
+    "ParametricShadows": 0,
+    "PerspectiveAspect": 0,
+    "PerspectiveHorizontal": 0,
+    "PerspectiveRotate": 0.0,
+    "PerspectiveScale": 100,
+    "PerspectiveUpright": "Off",
+    "PerspectiveVertical": 0,
+    "PerspectiveX": 0.0,
+    "PerspectiveY": 0.0,
+    "PostCropVignetteAmount": 0,
+    "ProcessVersion": 11.0,
+    "RawFileName": "DSC01664.ARW",
+    "RedHue": 0,
+    "RedSaturation": 0,
+    "Saturation": 0,
+    "SaturationAdjustmentAqua": -25,
+    "SaturationAdjustmentBlue": -25,
+    "SaturationAdjustmentGreen": -25,
+    "SaturationAdjustmentMagenta": -30,
+    "SaturationAdjustmentOrange": -6,
+    "SaturationAdjustmentPurple": -30,
+    "SaturationAdjustmentRed": -18,
+    "SaturationAdjustmentYellow": -18,
+    "ShadowTint": 0,
+    "Shadows2012": 0,
+    "SharpenDetail": 25,
+    "SharpenEdgeMasking": 0,
+    "SharpenRadius": "+1.0",
+    "Sharpness": 40,
+    "SplitToningBalance": 0,
+    "SplitToningHighlightHue": 35,
+    "SplitToningHighlightSaturation": 19,
+    "SplitToningShadowHue": 35,
+    "SplitToningShadowSaturation": 19,
+    "ColorTemperature": 2000,
+    "Texture": 0,
+    "Tint": -48,
+    "ToneCurve": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurveBlue": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurveGreen": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurveName": "Linear",
+    "ToneCurveName2012": "Custom",
+    "ToneCurvePV2012": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurvePV2012Blue": [
+      "43, 255",
+      "88, 152",
+      "149, 47",
+      "195, 16"
+    ],
+    "ToneCurvePV2012Green": [
+      "68, 255",
+      "107, 152",
+      "160, 47",
+      "200, 16"
+    ],
+    "ToneCurvePV2012Red": [
+      "90, 255",
+      "125, 152",
+      "172, 48",
+      "208, 16"
+    ],
+    "ToneCurveRed": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneMapStrength": 0,
+    "UprightCenterMode": 0,
+    "UprightCenterNormX": 0.5,
+    "UprightCenterNormY": 0.5,
+    "UprightFocalLength35mm": 35,
+    "UprightFocalMode": 0,
+    "UprightFourSegmentsCount": 0,
+    "UprightPreview": false,
+    "UprightTransformCount": 6,
+    "UprightVersion": 151388160,
+    "Version": 12.4,
+    "Vibrance": 0,
+    "VignetteAmount": 0,
+    "WhiteBalance": "Custom",
+    "Whites2012": 0
+  },
+  "Adobe": {
+    "DCTEncodeVersion": 100,
+    "APP14Flags0": "[14], Encoded with Blend=1 downsampling",
+    "APP14Flags1": "(none)",
+    "ColorTransform": "YCbCr"
+  },
+  "Composite": {
+    "Aperture": 8.0,
+    "ImageSize": "7480x4998",
+    "Megapixels": 37.4,
+    "ScaleFactor35efl": 1.0,
+    "ShutterSpeed": "1/250",
+    "SubSecModifyDate": "2024:11:02 16:18:31+01:00",
+    "DateTimeCreated": "2023:09:07 12:03:29",
+    "DigitalCreationDateTime": "2023:09:25 21:36:58",
+    "Flash": "No Flash",
+    "CircleOfConfusion": "0.030 mm",
+    "FOV": "36.2 deg",
+    "FocalLength35efl": "55.0 mm (35 mm equivalent: 55.0 mm)",
+    "HyperfocalDistance": "12.58 m",
+    "LightValue": 12.0,
+    "LensID": "55mm f/2.8 Micro Nikkor AIS"
+  }
+} 
+
+
+
+
+
+ {296: 2, 34665: 258, 270: 'Nikon F3, Nikon 55mm f/2.8 Micro Nikkor AIS, Kodak Portra 400 400\r\n\r\n', 271: 'Nikon', 272: 'F3', 305: 'Negative Lab Pro v2.1.2', 306: '2024:11:02 16:18:31', 282: 72.0, 283: 72.0, 36864: b'0231', 37377: 7.965784286116587, 37378: 6.0, 36867: '2023:09:07 12:03:29', 36868: '2023:09:25 21:36:58', 37381: 0.0, 40961: 1, 41728: b'\x03', 37384: 0, 41729: b'\x01', 37386: 55.0, 41986: 0, 41987: 0, 41988: 1.0, 41486: 2164.4328002929688, 41487: 2164.4328002929688, 36880: '+01:00', 41488: 3, 41993: 0, 41994: 0, 33434: 0.004, 33437: 8.0, 41985: 0, 34855: 400, 34864: 2, 34866: 100, 42034: (55.0, 55.0, 2.8, 2.8), 42035: 'Nikon', 42036: '55mm f/2.8 Micro Nikkor AIS', 41989: 55, 41990: 0, 41992: 0}
+(base) rja@AIRM4 film-photo-archive-manager % 

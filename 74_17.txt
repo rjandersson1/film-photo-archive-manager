@@ -1,0 +1,392 @@
+/usr/local/bin/python3 /Users/rja/Documents/Coding/film-photo-archive-manager/exifGrabber.py
+(base) rja@AIRM4 film-photo-archive-manager % /usr/local/bin/python3 /Users/rja/Documents/Coding/film-photo-archive-manager/exifGrabber.py
+{
+  "SourceFile": "/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023/74_23-09-09 F3 FP4 JPY/jpg/23-09-17 - 17 - Tokyo - FP4 - F 35-105mm - 4s.jpg",
+  "ExifTool": {
+    "ExifToolVersion": 13.3,
+    "Warning": "IPTCDigest is not current. XMP may be out of sync"
+  },
+  "System": {
+    "FileName": "23-09-17 - 17 - Tokyo - FP4 - F 35-105mm - 4s.jpg",
+    "Directory": "/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023/74_23-09-09 F3 FP4 JPY/jpg",
+    "FileSize": "17 MB",
+    "FileModifyDate": "2023:12:13 00:37:24-07:00",
+    "FileAccessDate": "2025:07:26 13:11:05-06:00",
+    "FileInodeChangeDate": "2025:07:26 13:09:26-06:00",
+    "FilePermissions": "-rwx------"
+  },
+  "File": {
+    "FileType": "JPEG",
+    "FileTypeExtension": "jpg",
+    "MIMEType": "image/jpeg",
+    "ExifByteOrder": "Little-endian (Intel, II)",
+    "CurrentIPTCDigest": "4a3c40f5d12f723d41f83ddda3a13a76",
+    "ImageWidth": 7287,
+    "ImageHeight": 4901,
+    "EncodingProcess": "Baseline DCT, Huffman coding",
+    "BitsPerSample": 8,
+    "ColorComponents": 3,
+    "YCbCrSubSampling": "YCbCr4:4:4 (1 1)"
+  },
+  "IFD0": {
+    "ImageDescription": "Nikon F, Nikon 35-105mm f/3.5-4.5 Ai-s, Ilford FP4 125 125\r\n\r\n",
+    "Make": "Nikon",
+    "Model": "F",
+    "XResolution": 72,
+    "YResolution": 72,
+    "ResolutionUnit": "inches",
+    "Software": "Negative Lab Pro v2.1.2",
+    "ModifyDate": "2023:12:13 08:35:29"
+  },
+  "ExifIFD": {
+    "ExposureTime": "1/250",
+    "FNumber": 5.6,
+    "ISO": 125,
+    "SensitivityType": "Recommended Exposure Index",
+    "RecommendedExposureIndex": 100,
+    "ExifVersion": "0231",
+    "DateTimeOriginal": "2023:09:17 12:00:00",
+    "CreateDate": "2023:09:25 22:03:36",
+    "OffsetTime": "+01:00",
+    "ShutterSpeedValue": "1/250",
+    "ApertureValue": 5.6,
+    "MaxApertureValue": 1.0,
+    "LightSource": "Unknown",
+    "FocalLength": "105.0 mm",
+    "ColorSpace": "sRGB",
+    "FocalPlaneXResolution": 2164.4328,
+    "FocalPlaneYResolution": 2164.4328,
+    "FocalPlaneResolutionUnit": "cm",
+    "FileSource": "Digital Camera",
+    "SceneType": "Directly photographed",
+    "CustomRendered": "Normal",
+    "ExposureMode": "Auto",
+    "WhiteBalance": "Auto",
+    "DigitalZoomRatio": 1,
+    "FocalLengthIn35mmFormat": "105 mm",
+    "SceneCaptureType": "Standard",
+    "Contrast": "Normal",
+    "Saturation": "Normal",
+    "Sharpness": "Normal",
+    "LensInfo": "35-105mm f/3.5-4.5",
+    "LensMake": "Nikon",
+    "LensModel": "35-105mm f/3.5-4.5 Ai-s"
+  },
+  "IFD1": {
+    "Compression": "JPEG (old-style)",
+    "XResolution": 72,
+    "YResolution": 72,
+    "ResolutionUnit": "inches",
+    "ThumbnailOffset": 930,
+    "ThumbnailLength": 13077,
+    "ThumbnailImage": "(Binary data 13077 bytes, use -b option to extract)"
+  },
+  "Photoshop": {
+    "XResolution": 72,
+    "DisplayedUnitsX": "inches",
+    "YResolution": 72,
+    "DisplayedUnitsY": "inches",
+    "PhotoshopThumbnail": "(Binary data 13077 bytes, use -b option to extract)",
+    "IPTCDigest": "84b35ba5854f97c034281e657be37581"
+  },
+  "IPTC": {
+    "CodedCharacterSet": "UTF8",
+    "EnvelopeRecordVersion": 4,
+    "ApplicationRecordVersion": 4,
+    "Keywords": [
+      "Film: B&W",
+      "shadows",
+      "Film Photography",
+      "Nikon",
+      "F",
+      "Nikon",
+      "35-105mm f/3.5-4.5 Ai-s",
+      "Ilford FP4 125",
+      125,
+      "Negative Lab Pro",
+      "Digital Camera Scan",
+      "Sony A7RII, 55mm micro",
+      "Laptop",
+      "3D Print v6.1 (43MP)",
+      "b&w"
+    ],
+    "DateCreated": "2023:09:17",
+    "TimeCreated": "12:00:00",
+    "DigitalCreationDate": "2023:09:25",
+    "DigitalCreationTime": "22:03:36",
+    "City": "Tokyo",
+    "Province-State": "Tokyo",
+    "Country-PrimaryLocationName": "Japan",
+    "Caption-Abstract": "Nikon F, Nikon 35-105mm f/3.5-4.5 Ai-s, Ilford FP4 125 125\r\n\r\n"
+  },
+  "ICC-header": {
+    "ProfileCMMType": "Linotronic",
+    "ProfileVersion": "2.1.0",
+    "ProfileClass": "Display Device Profile",
+    "ColorSpaceData": "RGB ",
+    "ProfileConnectionSpace": "XYZ ",
+    "ProfileDateTime": "1998:02:09 06:49:00",
+    "ProfileFileSignature": "acsp",
+    "PrimaryPlatform": "Microsoft Corporation",
+    "CMMFlags": "Not Embedded, Independent",
+    "DeviceManufacturer": "Hewlett-Packard",
+    "DeviceModel": "sRGB",
+    "DeviceAttributes": "Reflective, Glossy, Positive, Color",
+    "RenderingIntent": "Perceptual",
+    "ConnectionSpaceIlluminant": "0.9642 1 0.82491",
+    "ProfileCreator": "Hewlett-Packard",
+    "ProfileID": 0
+  },
+  "ICC_Profile": {
+    "ProfileCopyright": "Copyright (c) 1998 Hewlett-Packard Company",
+    "ProfileDescription": "sRGB IEC61966-2.1",
+    "MediaWhitePoint": "0.95045 1 1.08905",
+    "MediaBlackPoint": "0 0 0",
+    "RedMatrixColumn": "0.43607 0.22249 0.01392",
+    "GreenMatrixColumn": "0.38515 0.71687 0.09708",
+    "BlueMatrixColumn": "0.14307 0.06061 0.7141",
+    "DeviceMfgDesc": "IEC http://www.iec.ch",
+    "DeviceModelDesc": "IEC 61966-2.1 Default RGB colour space - sRGB",
+    "ViewingCondDesc": "Reference Viewing Condition in IEC61966-2.1",
+    "Luminance": "76.03647 80 87.12462",
+    "Technology": "Cathode Ray Tube Display",
+    "RedTRC": "(Binary data 2060 bytes, use -b option to extract)",
+    "GreenTRC": "(Binary data 2060 bytes, use -b option to extract)",
+    "BlueTRC": "(Binary data 2060 bytes, use -b option to extract)"
+  },
+  "ICC-view": {
+    "ViewingCondIlluminant": "19.6445 20.3718 16.8089",
+    "ViewingCondSurround": "3.92889 4.07439 3.36179",
+    "ViewingCondIlluminantType": "D50"
+  },
+  "ICC-meas": {
+    "MeasurementObserver": "CIE 1931",
+    "MeasurementBacking": "0 0 0",
+    "MeasurementGeometry": "Unknown",
+    "MeasurementFlare": "0.999%",
+    "MeasurementIlluminant": "D65"
+  },
+  "XMP-x": {
+    "XMPToolkit": "Image::ExifTool 11.34"
+  },
+  "XMP-iptcCore": {
+    "IntellectualGenre": "F 35-105mm",
+    "Scene": "FP4"
+  },
+  "XMP-iptcExt": {
+    "DigitalSourceType": "nil"
+  },
+  "XMP-aux": {
+    "Lens": "35-105mm f/3.5-4.5 Ai-s"
+  },
+  "XMP-dc": {
+    "Description": "Nikon F, Nikon 35-105mm f/3.5-4.5 Ai-s, Ilford FP4 125 125\r\n\r\n",
+    "Format": "image/jpeg",
+    "Subject": [
+      "Film: B&W",
+      "shadows"
+    ]
+  },
+  "XMP-exif": {
+    "FlashFired": false,
+    "FlashFunction": false,
+    "FlashMode": "Unknown",
+    "FlashRedEyeMode": false,
+    "FlashReturn": "No return detection"
+  },
+  "XMP-exifEX": {
+    "LensModel": "35-105mm f/3.5-4.5 Ai-s"
+  },
+  "XMP-photoshop": {
+    "City": "Tokyo",
+    "Country": "Japan",
+    "DateCreated": "2023:09:17 12:00:00",
+    "State": "Tokyo"
+  },
+  "XMP-plus": {
+    "MinorModelAgeDisclosure": "Unknown (nil)",
+    "ModelReleaseStatus": "Unknown (nil)",
+    "PropertyReleaseStatus": "Unknown (nil)",
+    "PLUSVersion": "1.2.0"
+  },
+  "XMP-xmp": {
+    "CreateDate": "2023:09:25 22:03:36",
+    "CreatorTool": "Negative Lab Pro v2.1.2",
+    "Label": "Green",
+    "MetadataDate": "2023:12:13 08:35:29+01:00",
+    "ModifyDate": "2023:12:13 08:35:29+01:00",
+    "Rating": 4
+  },
+  "XMP-xmpMM": {
+    "DerivedFromDocumentID": "3A51637101FB7C82180C6B3117CE7DC1",
+    "DerivedFromOriginalDocumentID": "3A51637101FB7C82180C6B3117CE7DC1",
+    "DocumentID": "xmp.did:88a27e3b-75d8-e24f-8df0-0e6fdba4b09c",
+    "HistoryAction": [
+      "derived",
+      "saved"
+    ],
+    "HistoryParameters": "converted from image/x-sony-arw to image/jpeg, saved to new location",
+    "HistoryChanged": "/",
+    "HistoryInstanceID": "xmp.iid:88a27e3b-75d8-e24f-8df0-0e6fdba4b09c",
+    "HistorySoftwareAgent": "Adobe Photoshop Lightroom Classic 9.4 (Windows)",
+    "HistoryWhen": "2023:12:13 08:35:29+01:00",
+    "InstanceID": "xmp.iid:88a27e3b-75d8-e24f-8df0-0e6fdba4b09c",
+    "OriginalDocumentID": "3A51637101FB7C82180C6B3117CE7DC1",
+    "PreservedFileName": "DSC01749.ARW"
+  },
+  "XMP-crs": {
+    "AlreadyApplied": true,
+    "AutoLateralCA": 0,
+    "Blacks2012": 0,
+    "BlueHue": 0,
+    "BlueSaturation": 0,
+    "CameraProfile": "Negative Lab v2.0",
+    "CameraProfileDigest": "11D316B1AF6D7170DFFABE5037B63AF9",
+    "Clarity2012": 0,
+    "ColorNoiseReduction": 25,
+    "ColorNoiseReductionDetail": 50,
+    "ColorNoiseReductionSmoothness": 50,
+    "Contrast2012": 0,
+    "ConvertToGrayscale": true,
+    "CropAngle": 0.079624,
+    "CropBottom": 0.961707,
+    "CropConstrainToWarp": 0,
+    "CropLeft": 0.04325,
+    "CropRight": 0.958754,
+    "CropTop": 0.035808,
+    "Dehaze": 0,
+    "Exposure2012": 0.0,
+    "GrainAmount": 0,
+    "GrayMixerAqua": 0,
+    "GrayMixerBlue": 0,
+    "GrayMixerGreen": 0,
+    "GrayMixerMagenta": 0,
+    "GrayMixerOrange": 0,
+    "GrayMixerPurple": 0,
+    "GrayMixerRed": 0,
+    "GrayMixerYellow": 0,
+    "GreenHue": 0,
+    "GreenSaturation": 0,
+    "HasCrop": true,
+    "HasSettings": true,
+    "Highlights2012": 0,
+    "LensManualDistortionAmount": 0,
+    "LensProfileEnable": 1,
+    "LensProfileSetup": "LensDefaults",
+    "LookName": "",
+    "LuminanceSmoothing": 0,
+    "OverrideLookVignette": false,
+    "ParametricDarks": 0,
+    "ParametricHighlightSplit": 75,
+    "ParametricHighlights": 0,
+    "ParametricLights": 0,
+    "ParametricMidtoneSplit": 50,
+    "ParametricShadowSplit": 25,
+    "ParametricShadows": 0,
+    "PerspectiveAspect": 0,
+    "PerspectiveHorizontal": 0,
+    "PerspectiveRotate": 0.0,
+    "PerspectiveScale": 100,
+    "PerspectiveUpright": "Off",
+    "PerspectiveVertical": 0,
+    "PerspectiveX": 0.0,
+    "PerspectiveY": 0.0,
+    "PostCropVignetteAmount": 0,
+    "ProcessVersion": 11.0,
+    "RawFileName": "DSC01749.ARW",
+    "RedHue": 0,
+    "RedSaturation": 0,
+    "ShadowTint": 0,
+    "Shadows2012": 0,
+    "SharpenDetail": 25,
+    "SharpenEdgeMasking": 0,
+    "SharpenRadius": "+1.0",
+    "Sharpness": 40,
+    "SplitToningBalance": 0,
+    "SplitToningHighlightHue": 108,
+    "SplitToningHighlightSaturation": 0,
+    "SplitToningShadowHue": 108,
+    "SplitToningShadowSaturation": 0,
+    "ColorTemperature": 5500,
+    "Texture": 0,
+    "Tint": "+6",
+    "ToneCurve": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurveBlue": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurveGreen": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurveName": "Linear",
+    "ToneCurveName2012": "Custom",
+    "ToneCurvePV2012": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneCurvePV2012Blue": [
+      "57, 255",
+      "92, 176",
+      "140, 48",
+      "176, 19"
+    ],
+    "ToneCurvePV2012Green": [
+      "57, 255",
+      "92, 176",
+      "140, 48",
+      "176, 19"
+    ],
+    "ToneCurvePV2012Red": [
+      "57, 255",
+      "92, 176",
+      "140, 48",
+      "176, 19"
+    ],
+    "ToneCurveRed": [
+      "0, 0",
+      "255, 255"
+    ],
+    "ToneMapStrength": 0,
+    "UprightCenterMode": 0,
+    "UprightCenterNormX": 0.5,
+    "UprightCenterNormY": 0.5,
+    "UprightFocalLength35mm": 35,
+    "UprightFocalMode": 0,
+    "UprightFourSegmentsCount": 0,
+    "UprightPreview": false,
+    "UprightTransformCount": 6,
+    "UprightVersion": 151388160,
+    "Version": 12.4,
+    "VignetteAmount": 0,
+    "WhiteBalance": "As Shot",
+    "Whites2012": 0
+  },
+  "Adobe": {
+    "DCTEncodeVersion": 100,
+    "APP14Flags0": "[14], Encoded with Blend=1 downsampling",
+    "APP14Flags1": "(none)",
+    "ColorTransform": "YCbCr"
+  },
+  "Composite": {
+    "Aperture": 5.6,
+    "ImageSize": "7287x4901",
+    "Megapixels": 35.7,
+    "ScaleFactor35efl": 1.0,
+    "ShutterSpeed": "1/250",
+    "SubSecModifyDate": "2023:12:13 08:35:29+01:00",
+    "DateTimeCreated": "2023:09:17 12:00:00",
+    "DigitalCreationDateTime": "2023:09:25 22:03:36",
+    "Flash": "No Flash",
+    "CircleOfConfusion": "0.030 mm",
+    "FOV": "19.5 deg",
+    "FocalLength35efl": "105.0 mm (35 mm equivalent: 105.0 mm)",
+    "HyperfocalDistance": "65.52 m",
+    "LightValue": 12.6,
+    "LensID": "35-105mm f/3.5-4.5 Ai-s"
+  }
+}
+(base) rja@AIRM4 film-photo-archive-manager % 
