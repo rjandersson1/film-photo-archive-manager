@@ -18,9 +18,21 @@ metadata script todo
 	--> done: scraped date string, split '20' and took [-1] from vec (lol)
 - cross reference completion status of roll metadata (list them all out on the back with a table of sorts)
 - build VC identifier
+	--> could work with indetifying files with identical times...? This should be done on a roll import basis. VC should have exposure counts eg. 7 --> 71, 72, 73, or 14 --> 141, 142, 143, 144 (maybe..?)
+		[exp, date, time, fileSize]
+			9 2023.09.07 12:03:43 42.090309143066406
+			10 2023.09.07 12:03:43 25.717382431030273
+			6 2023.09.07 12:02:50 27.970011711120605
+			8 2023.09.07 12:03:29 27.742809295654297
+			7 2023.09.07 12:03:15 26.342308044433594
+		--> here, #9 is a panorama of 7,8,10 and needs to be excluded!
 - ensure images load in correct order
 	--> done: bug was that index != exposure number, it was just file load order. Needed to scrape exposure # from filename, then added it to self.film_roll.image_data[i]['exposure']
 - finalize BW
 - build objects for each film emulsion; eg. G200 = (font color, font type)
 	- have different rolls have ever so slightly different rebate colors
+	- emulsion = (bnw, font_color, font_name)
+	--> render_rebates in Renderer.py needs to be updated on line 249: <# TODO: if self.roll.process == 'bnw': set image to bnw!>
+		--> do this maybe with adding 'process' to roll metadata based on stock.
+		....... nvm.... bigger development: needs to be done w work on RollMetadataDef.py and FilmCollectionDef.py, some # TODO functions need to be built and this can be implemented there...
 - 
