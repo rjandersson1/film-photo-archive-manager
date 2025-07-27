@@ -18,11 +18,15 @@ from typing import Iterable, Union
 class ExposureMetadata:
     def __init__(self, roll, path):
         self.roll = roll                     # roll object reference
+        
+        # File attributes
         self.filePath = path
         self.fileName = os.path.basename(path)
         self.name = self.fileName.split(".jpg")[0]
         self.fileType = self.fileName.split(".")[-1]
         self.fileSize = os.path.getsize(self.filePath)
+        self.rawFileName = None     # Raw file name, EXIF
+        self.rawFilePath = None       # Raw file path, cast
         
         # Exposure attributes
         self.exposureIndex = None           # Exposure index, from filename (dependant on duplicates... TODO)
@@ -73,10 +77,13 @@ class ExposureMetadata:
 
 
         # Duplicate Attributes
+        self.original = None                # Master exposure address (none if master), derived
+        self.copies = None                    # List of copies, derived
         self.isOriginal = None              # Is original, cast
         self.isDuplicate = None             # Is duplicate, cast
         self.isGrayscale = None             # Is grayscale, EXIF
         self.isStitched = None              # Is stitched, EXIF
+
 
         # Full EXIF / metadata JSON
         self.exif = None
@@ -145,6 +152,9 @@ class ExposureMetadata:
             return
         
         exif = self.exif
+
+        # File attributes
+        self.rawFileName = exif.get('PreservedFileName', None)  # Raw file name
         
         # Exposure attributes
         self.location = exif.get('City')
@@ -219,6 +229,7 @@ class ExposureMetadata:
                 self.filmFormat = stock_info.get('filmFormat')
 
 
+    # =========== Helper methods ================== #
 
     # Converts 'YYYY:MM:DD HH:MM:SS' or 'YYYY:MM:DD' + 'HH:MM:SS' into datetime object.
     def _convertDateTime(self, date_str=None, time_str=None):
