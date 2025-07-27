@@ -17,28 +17,53 @@ from typing import Iterable, Union
 
 
 # TODO: fix 'stk' attribute and related functions
-
 class RollMetadata:
     def __init__(self, directory, collection):
+        self._collection = collection  # Collection object reference
+
+
+        # File handling
+        self.directory = directory                  # subfolder directory eg. \...\2022 - 135\2_22-06-12 Gold 200 Zurich
+        self.name = os.path.basename(directory)     # eg. '2_22-06-12 Gold 200 Zurich'
+        self.jpgPath = None                         # Path to folder with jpg files
+        self.rawPath = None                         # Path to folder with raw files
+
+        # File data
+        self.sizeAll = None                         # Total size of roll, derived
+        self.sizeJpg = None                         # Size of jpg files, derived
+        self.sizeRaw = None                         # Size of raw files, derived
+        self.countAll = None                        # Total count of files in roll, derived
+        self.countJpg = None                        # Count of jpg files, derived
+        self.countRaw = None                        # Count of raw files, derived
+
+
+        # Film stock attributes
+        self.stock = None                           # Film stock, derived
+        self.stk = None                             # Film stock ID, cast from first exposure
+        self.boxSpeed = None                        # ISO box value, derived
+
+
+        # Roll attributes
+        self.process = None                         # Film development process (C41, E6, BNW), derived...? [TODO]
+        self.startDate = None                       # Roll start date, cast from first exposure
+        self.endDate = None                         # Roll end date, cast from last exposure
+        self.duration = None                        # Roll duration, derived
+        self.index = None                           # Roll index, derived from folder name
+        self.title = None                           # Title for the roll, derived from folder name
+        self.containsCopies = None                  # Does roll contain images that are copies of a master? Derived from copy check
+        self.cameras = None                         # List of cameras used in the roll, derived
+        self.lenses = None                          # List of lenses used in the roll, derived
+        self.exposures = None                       # List of addresses to exposures in the roll, derived
+        self.format = None                          # Film format, derived from stock info
+
+
+        # Helper
+        self._exif_cache = {} # Cache for EXIF data to avoid repeated reads
+
+
+
         # Initialize RollMetadata with a base directory and default metadata values
-        self.directory = directory # subfolder directory eg. \...\2022 - 135\2_22-06-12 Gold 200 Zurich
-        self._collection = collection # address of collection that roll was added to 
-        self.stock = "Unknown"  # Film stock (type of film used)
-        self.process = "Unkown" # Film development process (C41, E6, BNW)
-        self.startDate = "Unknown"  # Start date for the roll
-        self.endDate = "Unknown"  # Start date for the roll
-        self.duration = "Unknown" # Duration between start and end of roll
-        self.index = "Unknown"  # Index extracted from folder name
-        self.title = "Unknown"  # Title for the roll
-        self.camera = "Unknown"  # Camera model used for the roll
-        self.iso = "Unknown"  # ISO value, set to "Unknown" by default
-        self.stk = "Uknown"
-        self.sizeAll = "Unknown"
-        self.sizeJpg = "Unknown"
-        self.sizeRaw = "Unknown"
-        self.count = "Unknown"
-        self.countJpg = "Unknown"
-        self.countRaw = "Unknown"
+        self.camera = None  # Camera model used for the roll
         self._exif_cache = {}
         self.NEEDED_TAGS = ["IsMergedPanorama", "ConvertToGrayscale", "Megapixels", "ModifyDate"]
 
@@ -58,27 +83,17 @@ class RollMetadata:
         # Check for virtual copies
         self._virtualCopy_identifier()
 
-        # Attribute list of items in roll
-        self._attribute_list = {
-            "Directory": self.directory,
-            "Stock": self.stock,
-            "Process": self.process,
-            "Start Date": self.startDate,
-            "End Date": self.endDate,
-            "Time Frame": self.duration,
-            "Index": self.index,
-            "Title": self.title,
-            "Camera": self.camera,
-            "ISO": self.iso,
-            "Stock Abbreviation (STK)": self.stk,
-            "JPEG Directory": self.jpgPath,
-            "RAW Directory": self.rawPath,
-            "JPEG Size": self._format_size(self.sizeJpg),
-            "RAW Size": self._format_size(self.sizeRaw),
-            "Total Size": self._format_size(self.size),
-            "Photo Count": self.count
-        }
 
+
+
+    def _process_directory(self):
+        dir = self.directory
+        name = self.name
+
+        # Process directory name for attributes
+        
+
+    # 
     def _process_files(self):
         # Process file count and file size only if paths are defined
         self._get_index()
@@ -101,7 +116,7 @@ class RollMetadata:
             self.countRaw, self.sizeRaw = 0, 0
 
         # Set total count and size
-        self.count = self.countJpg + self.countRaw
+        self.countAll = self.countJpg + self.countRaw
         self.size = self.sizeRaw + self.sizeJpg
 
         # Fill out metadata attributes only if jpgPath exists
@@ -254,13 +269,8 @@ class RollMetadata:
         self.index = folder_name.split()[0].split('_')[0]
         
     # Prints info about roll
-    def get_info(self):
-        # Print a formatted table
-        print(f"\n{'Attribute':<25} | {'Value'}")
-        print("-" * 60)
-        for attr, value in self._attribute_list.items():
-            print(f"{attr:<25} | {value}")
-        print("-" * 60)
+    def get_info(self): # TODO
+        return
 
     def _get_dir(self):
 
@@ -409,7 +419,7 @@ class RollMetadata:
             # Print size and count for both JPG and RAW, and the total
             print(f"JPG: {self._format_size(self.sizeJpg)} and {self.countJpg} files")
             print(f"RAW: {self._format_size(self.sizeRaw)} and {self.countRaw} files")
-            print(f"Total: {self._format_size(self.size)} and {self.count} files")
+            print(f"Total: {self._format_size(self.size)} and {self.countAll} files")
         elif extension.lower() == "jpg":
             # Print size and count only for JPG
             print(f"JPG: {self._format_size(self.sizeJpg)} and {self.countJpg} files")
@@ -457,7 +467,7 @@ class RollMetadata:
             stock = None
             rating = None
 
-            fileName = photo[:-4]  # strip ".jpg"
+            fileName = photo[:-4]  # strip ".jpg" TODO: what is this?
 
             # ---- filename parsing ----
             # Case 1: 22-10-02 Ektar 100 Seebach 1.jpg
