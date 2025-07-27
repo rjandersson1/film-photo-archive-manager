@@ -1,0 +1,263 @@
+useful tags
+
+
+
+
+
+# ========================================== IPTC ========================================== #
+Potential metadata groups & their keys
+    - Exposure datetime
+        DateCreated
+        TimeCreated
+    - Creation datetime
+        DigitalCreationDate
+        DigitalCreationTime
+    - Location info
+        City
+        Province-State
+        Country-PrimaryLocationName
+
+
+Object attribute            EXIF Key
+self.dateTimeExposure       DateCreated, TimeCreated
+self.dateTimeCreation       DigitalCreationDate, DigitalCreationTime
+self.location               City
+self.state                  Province-State
+self.country                Country-PrimaryLocationName
+
+
+  "IPTC": {
+    "CodedCharacterSet": "UTF8",
+    "EnvelopeRecordVersion": 4,
+    "ApplicationRecordVersion": 4,
+    "Keywords": [
+      "Film: B&W",
+      "shadows",
+      "Film Photography",
+      "Nikon",
+      "F",
+      "Nikon",
+      "35-105mm f/3.5-4.5 Ai-s",
+      "Ilford FP4 125",
+      125,
+      "Negative Lab Pro",
+      "Digital Camera Scan",
+      "Sony A7RII, 55mm micro",
+      "Laptop",
+      "3D Print v6.1 (43MP)",
+      "b&w"
+    ],
+    "DateCreated": "2023:09:17",                                            # Exposure date
+    "TimeCreated": "12:00:00",                                              # Exposure time
+    "DigitalCreationDate": "2023:09:25",                                    # Creation date
+    "DigitalCreationTime": "22:03:36",                                      # Creation time 
+    "City": "Tokyo",                                                        # Location
+    "Province-State": "Tokyo",                                              # State
+    "Country-PrimaryLocationName": "Japan",                                 # Country
+    "Caption-Abstract": "Nikon F, Nikon 35-105mm f/3.5-4.5 Ai-s, Ilford FP4 125 125\r\n\r\n"
+  },
+
+
+# ========================================= ExifIFD ========================================= #
+Potential metadata groups & their keys
+    - Exposure data
+        ExposureTime
+        FNumber
+        ISO
+        ShutterSpeedValue
+        ApertureValue
+    - Lens data
+        FocalLength
+        LensInfo
+        LensMake
+        LensModel
+    - Date info
+        DateTimeOriginal        # Exposure datetime
+        CreateDate              # Creation datetime
+
+
+Object attribute            EXIF Key
+self.exposureTime           ExposureTime
+self.fNumber                FNumber
+self.iso                    ISO
+self.shutterSpeed           ShutterSpeedValue
+self.aperture               ApertureValue
+self.focalLength            FocalLength
+self.lensInfo               LensInfo
+self.lensMake               LensMake
+self.lensModel              LensModel
+self.dateTimeExposure       DateTimeOriginal
+self.dateTimeCreation       CreateDate
+
+
+  "ExifIFD": {
+    "ExposureTime": "1/250",                                               # Exposure time
+    "FNumber": 5.6,                                                        # Aperture (f-stop)
+    "ISO": 125,                                                            # ISO setting
+    "SensitivityType": "Recommended Exposure Index",
+    "RecommendedExposureIndex": 100,
+    "ExifVersion": "0231",
+    "DateTimeOriginal": "2023:09:17 12:00:00",                             # Exposure datetime
+    "CreateDate": "2023:09:25 22:03:36",                                   # Creation datetime
+    "OffsetTime": "+01:00",
+    "ShutterSpeedValue": "1/250",                                          # Shutter speed
+    "ApertureValue": 5.6,                                                  # Aperture value
+    "MaxApertureValue": 1.0,
+    "LightSource": "Unknown",
+    "FocalLength": "105.0 mm",                                             # Focal length
+    "ColorSpace": "sRGB",
+    "FocalPlaneXResolution": 2164.4328,
+    "FocalPlaneYResolution": 2164.4328,
+    "FocalPlaneResolutionUnit": "cm",
+    "FileSource": "Digital Camera",
+    "SceneType": "Directly photographed",
+    "CustomRendered": "Normal",
+    "ExposureMode": "Auto",
+    "WhiteBalance": "Auto",
+    "DigitalZoomRatio": 1,
+    "FocalLengthIn35mmFormat": "105 mm",
+    "SceneCaptureType": "Standard",
+    "Contrast": "Normal",
+    "Saturation": "Normal",
+    "Sharpness": "Normal",
+    "LensInfo": "35-105mm f/3.5-4.5",                                      # Lens info
+    "LensMake": "Nikon",                                                   # Lens manufacturer
+    "LensModel": "35-105mm f/3.5-4.5 Ai-s"                                 # Lens model
+  },
+
+
+# ========================================= File ========================================= #
+Potential metadata groups & their keys
+    - File information
+        FileType
+        FileTypeExtension
+    - Image dimensions
+        ImageWidth
+        ImageHeight
+
+
+Object attribute            EXIF Key
+self.fileType               FileType
+self.fileExtension          FileTypeExtension
+self.mimeType               MIMEType
+self.width                  ImageWidth
+self.height                 ImageHeight
+
+# Derived properties
+self.megapixels             self.imageWidth * self.imageHeight / 10E6
+self.aspectRatio            self.width / self.height
+self.isVertical             # if aspectRatio < 1
+self.isSquare               # if aspectRatio ~ 1
+self.isHorizontal           # if aspectRatio > 1
+self.isPano                 # if aspectRatio > 1.85
+
+
+    "File": {
+    "FileType": "JPEG",                                                    # File type
+    "FileTypeExtension": "jpg",                                            # File extension
+    "MIMEType": "image/jpeg",                                              
+    "ExifByteOrder": "Little-endian (Intel, II)",
+    "CurrentIPTCDigest": "4a3c40f5d12f723d41f83ddda3a13a76",
+    "ImageWidth": 7287,                                                    # Image width (px)
+    "ImageHeight": 4901,                                                   # Image height (px)
+    "EncodingProcess": "Baseline DCT, Huffman coding",
+    "BitsPerSample": 8,
+    "ColorComponents": 3,
+    "YCbCrSubSampling": "YCbCr4:4:4 (1 1)"
+  },
+
+# ========================================= IFD0 ========================================= #
+Potential metadata groups & their keys
+    - Camera info
+        Make                 # Camera brand
+        Model                # Camera model
+    - Image info
+        ImageDescription
+        ModifyDate
+    - Software info
+        Software
+
+Object attribute            EXIF Key
+self.cameraMake             Make
+self.cameraModel            Model
+self.imageDescription       ImageDescription
+self.software               Software
+self.modifyDate             ModifyDate
+
+
+    "IFD0": {
+    "ImageDescription": "Nikon F, Nikon 35-105mm f/3.5-4.5 Ai-s, Ilford FP4 125 125\r\n\r\n",  # Description
+    "Make": "Nikon",                                                                         # Camera brand
+    "Model": "F",                                                                            # Camera model
+    "XResolution": 72,
+    "YResolution": 72,
+    "ResolutionUnit": "inches",
+    "Software": "Negative Lab Pro v2.1.2",                                                   # Editing software
+    "ModifyDate": "2023:12:13 08:35:29"                                                      # Last modification
+  },
+
+
+# ========================================= XMP-crs ========================================= #
+Potential metadata groups & their keys
+    - Conversion info
+        ConvertToGrayscale
+    - Processing parameters (useful for image edits, tone, etc.)
+        CameraProfile
+        ColorNoiseReduction
+        Contrast2012
+        Clarity2012
+
+Object attribute            EXIF Key
+self.isGrayscale            ConvertToGrayscale
+
+
+    "XMP-crs": {
+    "AlreadyApplied": true,
+    "AutoLateralCA": 0,
+    "Blacks2012": 0,
+    "BlueHue": 0,
+    "BlueSaturation": 0,
+    "CameraProfile": "Negative Lab v2.0",                                # Camera profile
+    "CameraProfileDigest": "11D316B1AF6D7170DFFABE5037B63AF9",
+    "Clarity2012": 0,                                                    # Clarity adjustment
+    "ColorNoiseReduction": 25,                                           # Color noise reduction
+    "ColorNoiseReductionDetail": 50,
+    "ColorNoiseReductionSmoothness": 50,
+    "Contrast2012": 0,                                                   # Contrast adjustment
+    "ConvertToGrayscale": true,                                          # Grayscale conversion
+    ...
+    }
+
+
+# ========================================= XMP-aux ========================================= #
+Potential metadata groups & their keys
+    - Stitching / Panorama info
+        IsMergedPanorama
+    - Lens info
+        Lens
+
+Object attribute            EXIF Key
+self.isPano                 IsMergedPanorama
+
+
+    "XMP-aux": {
+    "IsMergedPanorama": true,                                            # Panorama flag
+    "LateralChromaticAberrationCorrectionAlreadyApplied": true,
+    "Lens": "55mm f/2.8 Micro Nikkor AIS"                                # Lens
+  },
+
+
+# ========================================= XMP-iptcCore ========================================= #
+Potential metadata groups & their keys
+    - Scene info
+        Scene
+
+Object attribute            EXIF Key
+self.stk                    Scene
+
+
+    "XMP-iptcCore": {
+    "IntellectualGenre": "F3 55mm2.8",                                   # Genre/context
+    "Location": "Zugerberg",                                             # Location context
+    "Scene": "P400"                                                      # Stock/scene
+  },
