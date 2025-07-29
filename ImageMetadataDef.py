@@ -14,6 +14,9 @@ import shutil
 import subprocess
 from typing import Iterable, Union
 
+DEBUG = True
+ERROR = True
+WARNING = True
 
 class ExposureMetadata:
     def __init__(self, roll, path):
@@ -26,10 +29,10 @@ class ExposureMetadata:
         self.fileType = self.fileName.split(".")[-1]
         self.fileSize = os.path.getsize(self.filePath)
         self.rawFileName = None     # Raw file name, EXIF
-        self.rawFilePath = None       # Raw file path, cast
+        self.rawFilePath = None       # Raw file path, derived TODO: grab from self.roll.rawPaths and search for matching filenames
         
         # Exposure attributes
-        self.exposureIndex = None           # Exposure index, from filename (dependant on duplicates... TODO)
+        self.index = None           # Exposure index, from filename (dependant on duplicates... TODO)
         self.location = None                # Location, EXIF
         self.state = None                   # State, EXIF
         self.country = None                 # Country, EXIF
@@ -88,6 +91,10 @@ class ExposureMetadata:
         # Full EXIF / metadata JSON
         self.exif = None
         self.metadata = None # TODO: dont know if I need this
+
+        # Methods
+        self.process_fileName()  # Process filename to extract exposure index
+
     
     # Grab exif. return exif json TODO
     def grab_exif(self):
@@ -107,10 +114,8 @@ class ExposureMetadata:
             try:
                 self.exposure = int(n[-1])
             except Exception:
+                if ERROR: print(f'[{self.roll.index}]\tERROR: [1] Could not get exposure index from:\n\t\t{name}')
                 self.exposure = None
-            self.location = n[-2] if len(n) >= 2 else None
-            self.stock = ' '.join(n[1:-2]) if len(n) >= 2 else None
-            self.rating = None # no rating available
 
         # Case 2: 22-07-28 - 1 - Flims - Superia 400 -  - 5s.jpg
         elif ' - ' in name and '#' not in name:
@@ -118,11 +123,8 @@ class ExposureMetadata:
             try:
                 self.exposure = int(n[1])
             except Exception:
+                if ERROR: print(f'[{self.roll.index}]\tERROR: [2] Could not get exposure index from:\n\t\t{name}')
                 self.exposure = None
-            self.location = n[2] if len(n) > 2 else None
-            self.stock = n[3] if len(n) > 3 else None
-            last = n[-1] if n else ''
-            self.rating = last.split('s')[0] if 's' in last else None
     
 
         # Case 3: 23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2.jpg
@@ -131,24 +133,26 @@ class ExposureMetadata:
             try:
                 self.exposure = int(n[-1].split('#')[-1])
             except Exception:
+                if ERROR: print(f'[{self.roll.index}]\tERROR: [3] Could not get exposure index from:\n\t\t{name}')
                 self.exposure = None
-            self.location = n[1] if len(n) > 1 else None
-            self.stock = n[2] if len(n) > 2 else None
-            rating_field = n[-2] if len(n) > 1 else ''
-            self.rating = rating_field.split('s')[0] if 's' in rating_field else None
 
         else:
-            print(f"[{self.roll.index}]\tError: Skipping unrecognized file name format:\n\t\t{self.fileName}")
+            if ERROR: print(f'[{self.roll.index}]\tERROR: [E] Could not get exposure index from:\n\t\t{name}')
             self.exposure = None
-            self.location = "error"
-            self.stock = "error"
-            self.rating = None
+
+    # Set exif data to image
+    def set_exif(self, exif):
+        self.exif = exif
+        self._update_from_exif()
 
 
-    # Updates image metadata from EXIF.
-    def update_from_exif(self):
+    # =========== Private methods ================== #
+
+    # Updates image attributes from EXIF.
+    def _update_from_exif(self):
         if self.exif is None:
-            print(f"[{self.roll.index}] [{self.exposureIndex}]\tError: No EXIF data available for:\n\t\t{self.fileName}.")
+            if ERROR:
+                print(f"[{self.roll.index}] [{self.index}]\ERROR: No EXIF data available for:\n\t\t{self.fileName}.")
             return
         
         exif = self.exif
@@ -196,7 +200,7 @@ class ExposureMetadata:
         # Update cast attributes
         self._update_cast_attributes()
 
-
+    # Processes all derived attributes
     def _update_derived_attributes(self):
         # Exposure attributes
         if self.exposureTime and self.iso and self.fNumber:
@@ -286,6 +290,6 @@ class ExposureMetadata:
                 return float(shutterspeed)
             
         # throw error if could not match any of the formats
-        raise ValueError(f"[{self.rollIndex}] [{self.exposureIndex}]\tCould not convert shutter speed:\n\t\t{shutterspeed}")
+        raise ValueError(f"[{self.roll.index}] [{self.index}]\tCould not convert shutter speed:\n\t\t{shutterspeed}")
     
     
