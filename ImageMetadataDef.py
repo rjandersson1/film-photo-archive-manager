@@ -80,10 +80,10 @@ class ExposureMetadata:
 
 
         # Duplicate Attributes
-        self.original = None                # Master exposure address (none if master), derived
-        self.copies = None                    # List of copies, derived
+        self.original = None                # Master exposure obj (none if master), derived
+        self.copies = None                  # Vector of copy objs, derived
         self.isOriginal = None              # Is original, cast
-        self.isDuplicate = None             # Is duplicate, cast
+        self.isCopy = None                  # Is duplicate, cast
         self.isGrayscale = None             # Is grayscale, EXIF
         self.isStitched = None              # Is stitched, EXIF
 
