@@ -41,4 +41,29 @@ metadata script todo
 --------------------------------------
 - reworked def _process_image_metadata(self) to correctly identify different fileName strings and extract relevant metadata, including exposure index.
 	- at the end, sort the dict by date-time.
+- I really should rework each image to be an object within the roll... would help with grabbing metadata and exif...
 
+
+----------------------------------------
+- finalized ImageMetadataDef.py
+- need to rework RollMetadataDef.py for implementation of image object and clean it up
+- need to rework and clean up FilmCollectionDef.py for data scraping
+- need to build bulk exif grabbing on a roll basis
+- need to implemnent duplicate checking on a roll basis
+- need to handle duplicates:
+	- link each exposure to its relevant raw file
+	- check if multiple exposures have the same raw file
+	- if yes, set the original as the one with the oldest dateCreated
+	- set copies as any others, indexing from 0 by order of dateCreated
+	- nest copies into original (original --> copies), and create link between copies --> original
+	- classify duplicate type
+		- recrop, pano, stitch, reprocess
+	- build getCopies() method --> returns vector of copy addresses, indexed from 0 
+	- rebuild exposure list and indexing
+	- cast flags back onto roll
+- build DF row for each image
+- build DF for a roll based on each image
+long term:
+- add filtering and handling onto some web based app
+	
+	
