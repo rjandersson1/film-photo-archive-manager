@@ -34,7 +34,7 @@ class RollMetadata:
         self.rawDirs = None                         # Path to folder with raw files
         self.images = None                          # List of ExposureMetadata objects, derived
 
-        # File data
+        # File data TODO
         self.sizeAll = None                         # Total size of roll, derived
         self.sizeJpg = None                         # Size of jpg files, derived
         self.sizeRaw = None                         # Size of raw files, derived
@@ -42,7 +42,7 @@ class RollMetadata:
         self.countJpg = None                        # Count of jpg files, derived
         self.countRaw = None                        # Count of raw files, derived
 
-        # Film stock attributes
+        # Film stock attributes TODO
         self.stock = None                           # Film stock, derived
         self.stk = None                             # Film stock ID, cast from first exposure
         self.boxSpeed = None                        # ISO box value, derived
@@ -61,26 +61,15 @@ class RollMetadata:
         self.exposures = None                       # List of addresses to exposures in the roll, derived
         self.format = None                          # Film format, derived from stock info
 
-        # Helper
-        self._exif_cache = {}                       # Cache for image objects that have been processed
+    # Main loop
+    def process_roll(self):
+        self.process_directory() # get data from folder names
+        self.process_images() # fetch all images in the jpgDirs
+        self.process_exif() # fetch exif data for all images
+        self.sort_images() # sort images by exposure number (image.index)
+        self.process_copies() # check for copies and nest them in the master copy object
 
-        # Methods
-        self.process_directory()
-        self.process_images()
-
-
-
-# Approach
-# 1) Initialize roll obj --> done
-# 2) Identify filepaths & gather directory data ---> done
-    # Search through all jpg files and get their filepaths.
-# 3) Cycle through all filepaths and generate image objects - cache the exif generation
-    # make a check to ensure that no erroneous jpg or png files are processed. only process files w a specific type.
-    # eg. 1123884.jpg ignored, or '5mb' directories ignored
-# 4) Bulk process exif data
-# 6) Order by exposure nr
-# 7) Identify copies
-# 8) Process copies - nest and update metadata & exposure index.
+        
 
     # 2) Identify filepaths & gather directory data
         # Search through all jpg files and get their filepaths.
@@ -213,6 +202,61 @@ class RollMetadata:
                 
                 # cast exif to image
                 image.set_exif(exif)
+
+    # 5) Order images by exposure number
+    def sort_images(self):
+        indices = [img.index for img in self.images]
+        if len(indices) != len(set(indices)):
+            if WARNING:
+                print(f"[{self.index}]\tWARNING: Duplicate exposure indices found in roll '{self.name}'")
+
+        # Sort images by index
+        self.images.sort(key=lambda img: img.index)
+
+    # 6) Handle copies
+        # Check through images to see if any have identical image.dateExposed.
+        # If yes, build a list of each group of duplicate objects: list[0] == master copy. Sort by image.dateCreated. Oldest is the master.
+        # Handle copies by nesting them in the master copy object.
+    def process_copies(self):
+        copies_dict = {}
+        for img in self.images:
+            key = img.dateExposed
+
+            # Build dict of copies if date key matches
+            if key not in copies_dict:
+                copies_dict[key] = []
+            copies_dict[key].append(img)
+
+        self.containsCopies = False
+        for group in copies_dict.values():
+            if len(group) > 1:
+                self.containsCopies = True
+                # Sort by dateCreated, oldest is master
+                group.sort(key=lambda x: x.dateCreated)
+
+                # Define master obj
+                master = group[0]
+                master.isOriginal = True
+                master.isCopy = False
+
+                # Nest copies into the obj as a vector of objs
+                master.copies = group[1:]
+
+                # Update copy attributes
+                for copy in master.copies:
+                    copy.isOriginal = False
+                    copy.isCopy = True
+                    copy.index = master.index
+            else:
+                master = group[0]
+                
+                # Handle master copy attributes
+                master.isOriginal = True
+                master.isCopy = False
+        
+        if self.containsCopies:
+            self.sort_images(self) # re sort images
+            
 
 
     # =============== Helper Methods ============== #
