@@ -27,13 +27,15 @@ class collectionObj:
         self.countJpg = 0
         self.countRaw = 0
 
-        self.rolls = []  # List to store RollMetadata instances for each roll
-        self._import_rolls() # Import all rolls
-        
+        # Initialize dicts
         self.stocklist = {}
         self.cameralist = {}
         self.build_stocklist()
         self.build_cameralist()
+
+        self.rolls = []  # List to store RollMetadata instances for each roll
+        self._import_rolls() # Import all rolls
+        
         
         
         # self.stock_list = self._build_stock_list()
@@ -513,6 +515,19 @@ class collectionObj:
             'isSlide': False
         }
 
+        P400 = {
+            'manufacturer': 'Kodak',
+            'stock': 'Portra 400',
+            'boxspeed': '400',
+            'stk': 'P400',
+            'process': 'C41',
+            'isColor': True,
+            'isBlackAndWhite': False,
+            'isInfrared': False,
+            'isNegative': True,
+            'isSlide': False
+        }
+
         K400 = {
             'manufacturer': 'Harman',
             'stock': 'Kentmere 400',
@@ -542,11 +557,12 @@ class collectionObj:
         self.stocklist = {
             'EK100': EK100,
             'G200': G200,
+            'P400': P400,
             'K400': K400,
             'FP4': FP4
         }
 
-    def build_cameralist(self):
+    def build_cameralist(self): # TODO: make this better and more robust. make a script to scrape excel file to build list more easily
         # CAMERA = {
         #     'brand': '',
         #     'model': '',
@@ -556,7 +572,7 @@ class collectionObj:
         #     'filmformat': ''
         # }
 
-        NIKONF3 = {
+        F3 = {
             'brand': 'Nikon',
             'model': 'F3',
             'id': 'F3',
@@ -565,7 +581,7 @@ class collectionObj:
             'filmformat': '35mm'
         }
 
-        ROLLEI35S = {
+        R35S = {
             'brand': 'Rollei',
             'model': '35S',
             'id': 'R35S',
@@ -574,17 +590,19 @@ class collectionObj:
             'filmformat': '35mm'
         }
 
-        PENTAX6X7 = {
+        P6X7 = {
             'brand': 'Pentax',
-            'model': '6X7',
+            'model': '6x7',
             'id': 'P6X7',
             'serial': '',
             'filmtype': '120',
             'filmformat': '6X7'
         }
 
-        self.cameraList = {
-            'F3': NIKONF3,
-            'R35S': ROLLEI35S,
-            'P6X7': PENTAX6X7
+        self.cameralist = {
+            'F3': F3,
+            'R35S': R35S,
+            'P6X7': P6X7,
+            'Pentax 6x7': P6X7,
+            'Pentax 6X7': P6X7
         }
