@@ -16,10 +16,10 @@ from RollMetadataDef import RollMetadata
 
 class FilmCollection:
     def __init__(self, directory):
-        print("Importing collection...")
+        print("[I]\tImporting collection...")
         # Initialize FilmCollection with a base directory
         self.directory = directory
-        self.subdirectories = self._find_subdirectories()
+        self.subdirectories = self._find_subdirectories() # eg ['/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023']
 
         # Initialize filesizes
         self.sizeJpg = 0
@@ -37,10 +37,10 @@ class FilmCollection:
         }
         
         
-        self.stock_list = self._build_stock_list()
+        # self.stock_list = self._build_stock_list()
         self._process_rolls()
         print("Collection imported!")
-        self.get_size()
+        # self.get_size()
         self.plot = self.Plot(self)
     
     # Adds rolls to collection from a given directory
@@ -56,9 +56,12 @@ class FilmCollection:
         
         # Loop through each sorted subfolder and add to rolls
         for subFolder in sorted_subfolders:
+            # skip ds_store files
+            if subFolder == '.DS_Store': continue
             subdirectory = os.path.join(folderDir, subFolder)
             # Create a RollMetadata instance for each subfolder and add it to rolls
             new_roll = RollMetadata(directory=subdirectory, collection=self)
+            new_roll.process_roll()
             self.rolls.append(new_roll)
 
     # Returns address of roll index
@@ -66,7 +69,7 @@ class FilmCollection:
         # Retrieve the roll with the specified index, if it exists
         for roll in self.rolls:
             # Compare each roll's index with target_index (match types if index is a string)
-            if roll.index == str(target_index):
+            if roll.index == target_index:
                 return roll  # Return the roll if a match is found
         return None  # Return None if no roll with the specified index is found
 
@@ -117,7 +120,7 @@ class FilmCollection:
                 stock_dict[stock] = stk
         return stock_dict
     
-    # Updates current stock list
+    # Updates current stock list TODO
     def update_stock_list(self):
          self.stock_list = self._build_stock_list()
 
@@ -137,6 +140,7 @@ class FilmCollection:
     # Imports rolls
     def _import_rolls(self):
         for directory in self.subdirectories:
+            print(f"[I]\tImporting from {directory}...")
             self.add_rolls_from_directory(directory)
 
     # Indexes and sorts a list of filepaths
@@ -163,15 +167,15 @@ class FilmCollection:
     
     def _process_rolls(self):
         for roll in self.rolls[:]:  # Iterate over a copy of self.rolls
-            if roll.jpgPath is None or roll.camera == "Unknown":
+            if roll.jpgDirs is None:
                 self.rolls.remove(roll)  # Remove from the original list
                 continue
 
-            # Accumulate sizes and counts
-            self.sizeJpg += roll.sizeJpg
-            self.sizeRaw += roll.sizeRaw
-            self.countJpg += roll.countJpg
-            self.countRaw += roll.countRaw
+            # Accumulate sizes and counts TODO: reimplement as of 16 aug 2025
+            # self.sizeJpg += roll.sizeJpg
+            # self.sizeRaw += roll.sizeRaw
+            # self.countJpg += roll.countJpg
+            # self.countRaw += roll.countRaw
 
         # Set total size and count
         self.size = self.sizeJpg + self.sizeRaw
