@@ -18,7 +18,7 @@ DEBUG = True
 ERROR = True
 WARNING = True
 
-class ExposureMetadata:
+class exposureObj:
     def __init__(self, roll, path):
         self.roll = roll                     # roll object reference
         

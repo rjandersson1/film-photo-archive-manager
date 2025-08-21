@@ -13,7 +13,7 @@ import json
 import shutil
 import subprocess
 from typing import Iterable, Union
-from ImageMetadataDef import ExposureMetadata
+from exposureObj import exposureObj
 
 DEBUG = True
 WARNING = True
@@ -22,7 +22,7 @@ ERROR = True
 
 
 # TODO: fix 'stk' attribute and related functions
-class RollMetadata:
+class rollObj:
     def __init__(self, directory, collection):
         self._collection = collection  # Collection object reference
 
@@ -179,7 +179,7 @@ class RollMetadata:
             for file in os.listdir(dir_path):
                 if file.lower().endswith(('.jpg', '.jpeg', '.png')):
                     file_path = os.path.join(dir_path, file)
-                    image = ExposureMetadata(self, file_path)
+                    image = exposureObj(self, file_path)
                     images.append(image)
         
         # Update image list attribute
