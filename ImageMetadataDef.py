@@ -30,9 +30,11 @@ class ExposureMetadata:
         self.fileSize = os.path.getsize(self.filePath)
         self.rawFileName = None     # Raw file name, EXIF
         self.rawFilePath = None       # Raw file path, derived TODO: grab from self.roll.rawPaths and search for matching filenames
-        
+        self.attributesFile = {}
+
         # Exposure attributes
         self.index = None           # Exposure index, from filename (dependant on duplicates... TODO)
+        self.index_original = None
         self.location = None                # Location, EXIF
         self.state = None                   # State, EXIF
         self.country = None                 # Country, EXIF
@@ -44,11 +46,12 @@ class ExposureMetadata:
         self.iso = None                     # ISO, EXIF
         self.exposureTime = None            # Exposure time, derived (float value of self.shutterspeed)
         self.exposureValue = None           # EV, derived
+        self.attributesExposure = {}
 
         # Datetime attributes
         self.dateExposed = None            # Exposure time, EXIF
         self.dateCreated = None            # Creation time, EXIF
-        
+
         # Camera & lens
         self.camera = None                  # Camera, Derived
         self.cameraBrand = None             # Camera brand, EXIF
@@ -57,6 +60,7 @@ class ExposureMetadata:
         self.lensModel = None               # Lens model, EXIF
         self.lens = None                    # Lens, Derived
         self.focalLength = None             # Focal length, EXIF
+        self.attributesCamera = {}
 
         # Image data
         self.width = None                   # Image width, EXIF
@@ -66,7 +70,8 @@ class ExposureMetadata:
         self.isVertical = None              # Is vertical, derived
         self.isSquare = None                # Is square, derived
         self.isHorizontal = None            # Is horizontal, derived
-        self.isPano = None                  # Is panorama, derived        
+        self.isPano = None                  # Is panorama, derived       
+        self.attributesImage = {} 
         
         # Film attributes
         self.isExpired = None               # Is film expired, cast
@@ -77,20 +82,23 @@ class ExposureMetadata:
         self.isSlide = None                 # Is slide film, cast
         self.boxSpeed = None                # Box speed, cast
         self.filmFormat = None              # Film format, cast
-
+        self.attributesFilm = {}
 
         # Duplicate Attributes
         self.original = None                # Master exposure obj (none if master), derived
-        self.copies = None                  # Vector of copy objs, derived
+        self.copies = []                  # Vector of copy objs, derived
         self.isOriginal = None              # Is original, cast
+        self.copyCount = None
+        self.containsCopies = None          # Does this exposure contain copies, derived
         self.isCopy = None                  # Is duplicate, cast
         self.isGrayscale = None             # Is grayscale, EXIF
         self.isStitched = None              # Is stitched, EXIF
+        self.attributesCopies = {}
 
 
         # Full EXIF / metadata JSON
         self.exif = None
-        self.metadata = None # TODO: dont know if I need this
+        self.attributes = {}
 
         # Methods
         self.process_fileName()  # Process filename to extract exposure index
@@ -112,33 +120,35 @@ class ExposureMetadata:
         if ' - ' not in name:
             n = name.split(' ') # [22-10-02, Ektar, 100, Seebach, 1]
             try:
-                self.exposure = int(n[-1])
+                self.index= int(n[-1])
             except Exception:
-                if ERROR: print(f'[{self.roll.index}]\tERROR: [1] Could not get exposure index from:\n\t\t{name}')
-                self.exposure = None
+                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [1] Could not get exposure index from:\n\t\t{name}')
+                self.index= None
 
         # Case 2: 22-07-28 - 1 - Flims - Superia 400 -  - 5s.jpg
         elif ' - ' in name and '#' not in name:
             n = name.split(' - ')  # [22-07-28, 1, Flims, Superia 400, , 5s]
             try:
-                self.exposure = int(n[1])
+                self.index= int(n[1])
             except Exception:
-                if ERROR: print(f'[{self.roll.index}]\tERROR: [2] Could not get exposure index from:\n\t\t{name}')
-                self.exposure = None
+                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [2] Could not get exposure index from:\n\t\t{name}')
+                self.index= None
     
 
         # Case 3: 23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2.jpg
         elif ' - ' in name and '#' in name:
             n = name.split(' - ')  # [23-01-01, Zurich, Ektar 100, F3, 3s, #2]
             try:
-                self.exposure = int(n[-1].split('#')[-1])
+                self.index= int(n[-1].split('#')[-1])
             except Exception:
-                if ERROR: print(f'[{self.roll.index}]\tERROR: [3] Could not get exposure index from:\n\t\t{name}')
-                self.exposure = None
+                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [3] Could not get exposure index from:\n\t\t{name}')
+                self.index= None
 
         else:
-            if ERROR: print(f'[{self.roll.index}]\tERROR: [E] Could not get exposure index from:\n\t\t{name}')
-            self.exposure = None
+            if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [E] Could not get exposure index from:\n\t\t{name}')
+            self.index= None
+
+        self.index_original = self.index  # Store original index for later use
 
     # Set exif data to image
     def set_exif(self, exif):
@@ -154,50 +164,66 @@ class ExposureMetadata:
             if ERROR:
                 print(f"[{self.roll.index}] [{self.index}]\ERROR: No EXIF data available for:\n\t\t{self.fileName}.")
             return
-        
+
         exif = self.exif
 
         # File attributes
-        self.rawFileName = exif.get('PreservedFileName', None)  # Raw file name
+        self.rawFileName = exif["XMP-xmpMM"]['PreservedFileName']
+        if self.roll.rawDirs:
+            rawDir = self.roll.rawDirs[0]
+            rawPath = os.path.join(rawDir, self.rawFileName)
+            if os.path.isfile(rawPath):
+                self.rawFilePath = rawPath
         
-        # Exposure attributes
-        self.location = exif.get('City')
-        self.state = exif.get('Province-State')
-        self.country = exif.get('Country-PrimaryLocationName')
-        self.stk = exif.get('SceneType')
-        self.rating = int(exif['Rating']) if exif.get('Rating') else None
-        self.fNumber = float(exif['FNumber']) if exif.get('FNumber') else None
-        self.shutterSpeed = str(exif.get('ShutterSpeedValue')) if exif.get('ShutterSpeedValue') else None
-        self.exposureTime = self._convertShutterspeed(self.shutterSpeed)
-        self.iso = int(exif['ISO']) if exif.get('ISO') else None
+        # Exposure attributes (IPTC)
+        self.location = exif["IPTC"]['City'] #IPTC
+        self.state = exif["IPTC"]['Province-State'] #IPTC
+        self.country = exif["IPTC"]['Country-PrimaryLocationName'] #IPTC
+        self.stk = exif["XMP-iptcCore"]['Scene'] #ExifIFD
+        self.rating = int(exif["XMP-xmp"]['Rating']) if exif["XMP-xmp"]['Rating'] else None #XMP-xmp
+        self.iso = int(exif["ExifIFD"]['ISO']) if exif["ExifIFD"]['ISO'] else None #ExifIDF
+        try: 
+            self.fNumber = float(exif["ExifIFD"]["FNumber"])
+        except KeyError: self.fNumber = None
+
+        try:
+            self.shutterSpeed = str(exif["ExifIFD"]['ShutterSpeedValue'])
+            self.exposureTime = self._convertShutterspeed(self.shutterSpeed)
+        except KeyError: self.shutterSpeed = None
 
         # Datetime attributes
-        date = exif.get('DateTimeOriginal', None)  
+        date = exif["ExifIFD"]["DateTimeOriginal"]
         self.dateExposed = self._convertDateTime(date)
-        date = exif.get('CreateDate', None)
+        date = exif["ExifIFD"]["CreateDate"]
         self.dateCreated = self._convertDateTime(date)
 
         # Camera & lens
-        self.cameraBrand = exif.get('Make')
-        self.cameraModel = exif.get('Model')
+        self.cameraBrand = exif["IFD0"]['Make'] #IFD0
+        self.cameraModel = exif["IFD0"]['Model'] #IFD0
         self.camera = f"{self.cameraBrand} {self.cameraModel}" if self.cameraBrand and self.cameraModel else None
-        self.lensBrand = exif.get('LensMake')
-        self.lensModel = exif.get('LensModel')
+        self.lensBrand = exif["ExifIFD"]['LensMake'] #ExifIFD
+        self.lensModel = exif["ExifIFD"]['LensModel'] #ExifIFD
         self.lens = f"{self.lensBrand} {self.lensModel}" if self.lensBrand and self.lensModel else None
-        self.focalLength = float(exif.get('FocalLength').split(' ')[0]) if exif.get('FocalLength') else None
+        self.focalLength = float(exif["ExifIFD"]['FocalLength'].split(' ')[0]) if exif["ExifIFD"]['FocalLength'] else None #ExifIFD
         
         # Image data
-        self.width = int(exif.get('ExifImageWidth', 0)) if exif.get('ExifImageWidth') else None
-        self.height = int(exif.get('ExifImageHeight', 0)) if exif.get('ExifImageHeight') else None
+        self.width = int(exif["File"]['ImageWidth']) if exif["File"]['ImageWidth'] else None #File
+        self.height = int(exif["File"]['ImageHeight']) if exif["File"]['ImageHeight'] else None #File
 
         # Duplicate Attributes
-        self.isGrayscale = bool(exif.get('ConvertToGrayscale', None)) if exif.get('ConvertToGrayscale') else None
-        self.isStitched = bool(exif.get('IsMergedPanorama', None)) if exif.get('IsMergedPanorama') else None
+        self.isGrayscale = bool(exif["XMP-crs"]['ConvertToGrayscale']) if bool(exif["XMP-crs"]['ConvertToGrayscale']) is not None else "ERROR" #XMP-crs
+        try:
+            self.isStitched = bool(exif["XMP-aux"]['IsMergedPanorama']) # XMP-aux
+        except KeyError as e:
+            self.isStitched = False
+
+        # Problem keys
+
 
         # Update derived attributes
         self._update_derived_attributes()
 
-        # Update cast attributes
+        # Update cast attributes TODO
         self._update_cast_attributes()
 
     # Processes all derived attributes
@@ -219,19 +245,7 @@ class ExposureMetadata:
     
     # TODO: requests info from roll object to cast attributes to exposure object.
     def _update_cast_attributes(self):
-        # Film attributes TODO
-        if self.stk:
-            stock_info = self.roll.get_stock_info(self.stk)
-            if stock_info:
-                self.isExpired = stock_info.get('isExpired', False)
-                self.isColor = stock_info.get('isColor', False)
-                self.isBlackAndWhite = stock_info.get('isBlackAndWhite', False)
-                self.isInfrared = stock_info.get('isInfrared', False)
-                self.isNegative = stock_info.get('isNegative', False)
-                self.isSlide = stock_info.get('isSlide', False)
-                self.boxSpeed = stock_info.get('boxSpeed')
-                self.filmFormat = stock_info.get('filmFormat')
-
+        return
 
     # =========== Helper methods ================== #
 
@@ -261,7 +275,6 @@ class ExposureMetadata:
         return None
     
     def _convertShutterspeed(self, shutterspeed):
-
         # Convert shutter speeds to (float) seconds.
         # Parse the following formats:
             # '1/125', '1/60', '1/30'
@@ -292,4 +305,126 @@ class ExposureMetadata:
         # throw error if could not match any of the formats
         raise ValueError(f"[{self.roll.index}] [{self.index}]\tCould not convert shutter speed:\n\t\t{shutterspeed}")
     
+    # prints all (filtered) attributes of an image as a table
+    def getInfo(self, key=None):
+        print(f'[{self.roll.index}][{self.index}] INFO ==========================')
+        # setup
+        if self.attributes == {}: self.buildInfo()
+        tab = '\t\t'
+
+        if key == None:
+            dict = self.attributes
+            for subdict in dict.values():
+                for key in subdict.keys():
+                    val = subdict[key]
+                    if val == None: print(f'{key}{tab}{val}')
+        else:
+            dict = self.attributes[key]
+            for key in dict.keys():
+                val = dict[key]
+                print(f'{key}{tab}{val}') 
+
+                
+
     
+    # Build attribute dictionary for image
+    def buildInfo(self):
+        # Build sub-dictionaries
+        attributesFile = {}
+        attributesExposure = {}
+        attributesCamera = {}
+        attributesImage = {}
+        attributesFilm = {}
+        attributesCopies = {}
+
+        # File attributes
+        attributesFile['filePath'] = self.filePath
+        attributesFile['fileName'] = self.fileName
+        attributesFile['name'] = self.name
+        attributesFile['fileType'] = self.fileType
+        attributesFile['fileSize'] = self.fileSize
+        attributesFile['rawFileName'] = self.rawFileName
+        attributesFile['rawFilePath'] = self.rawFilePath
+
+
+        # Exposure attributes
+        attributesExposure['index'] = self.index
+        attributesExposure['index_original'] = self.index_original
+        attributesExposure['dateExposed'] = self.dateExposed
+        attributesExposure['dateCreated'] = self.dateCreated
+        attributesExposure['location'] = self.location
+        attributesExposure['state'] = self.state
+        attributesExposure['country'] = self.country
+        attributesExposure['stk'] = self.stk
+        attributesExposure['stock'] = self.stock
+        attributesExposure['rating'] = self.rating
+        attributesExposure['fNumber'] = self.fNumber
+        attributesExposure['shutterSpeed'] = self.shutterSpeed
+        attributesExposure['iso'] = self.iso
+        attributesExposure['exposureTime'] = self.exposureTime
+        attributesExposure['exposureValue'] = self.exposureValue
+
+        # Camera & lens
+        attributesCamera['camera'] = self.camera
+        attributesCamera['cameraBrand'] = self.cameraBrand
+        attributesCamera['cameraModel'] = self.cameraModel
+        attributesCamera['lensBrand'] = self.lensBrand
+        attributesCamera['lensModel'] = self.lensModel
+        attributesCamera['lens'] = self.lens
+        attributesCamera['focalLength'] = self.focalLength
+
+        # Image data
+        attributesImage['width'] = self.width
+        attributesImage['height'] = self.height
+        attributesImage['mpx'] = self.mpx
+        attributesImage['aspectRatio'] = self.aspectRatio
+        attributesImage['isVertical'] = self.isVertical
+        attributesImage['isSquare'] = self.isSquare
+        attributesImage['isHorizontal'] = self.isHorizontal
+        attributesImage['isPano'] = self.isPano
+
+        # Film attributes
+        attributesFilm['isExpired'] = self.isExpired
+        attributesFilm['isColor'] = self.isColor
+        attributesFilm['isBlackAndWhite'] = self.isBlackAndWhite
+        attributesFilm['isInfrared'] = self.isInfrared
+        attributesFilm['isNegative'] = self.isNegative
+        attributesFilm['isSlide'] = self.isSlide
+        attributesFilm['boxSpeed'] = self.boxSpeed
+        attributesFilm['filmFormat'] = self.filmFormat
+
+        # Duplicate Attributes
+        attributesCopies['original'] = self.original
+        attributesCopies['copies'] = self.copies
+        attributesCopies['isOriginal'] = self.isOriginal
+        attributesCopies['copyCount'] = self.copyCount
+        attributesCopies['containsCopies'] = self.containsCopies
+        attributesCopies['isCopy'] = self.isCopy
+        attributesCopies['isGrayscale'] = self.isGrayscale
+        attributesCopies['isStitched'] = self.isStitched
+
+
+        # Build master dict
+        attributes = {}
+        attributes['file'] = attributesFile
+        attributes['exposure'] = attributesExposure
+        attributes['camera'] = attributesCamera
+        attributes['image'] = attributesImage
+        attributes['film'] = attributesFilm
+        attributes['copies'] = attributesCopies
+
+        # Cast back to obj
+        self.attributesFile = attributesFile
+        self.attributesExposure = attributesExposure
+        self.attributesCamera = attributesCamera
+        self.attributesImage = attributesImage
+        self.attributesFilm = attributesFilm
+        self.attributesCopies = attributesCopies
+        self.attributes = attributes
+
+
+
+
+
+
+
