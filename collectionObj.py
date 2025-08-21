@@ -30,11 +30,10 @@ class collectionObj:
         self.rolls = []  # List to store RollMetadata instances for each roll
         self._import_rolls() # Import all rolls
         
-        self.stock_list = {
-            "Ektar 100": "E100",
-            "Gold 200": "G200",
-            # Add other stock/shorthand pairs as needed
-        }
+        self.stocklist = {}
+        self.cameralist = {}
+        self.build_stocklist()
+        self.build_cameralist()
         
         
         # self.stock_list = self._build_stock_list()
@@ -102,27 +101,6 @@ class collectionObj:
                 print(f"  {attr}: {desc} Current value: {value}")
         else:
             print("\nNo rolls have been added to the collection yet.")
-
-    # Builds a list of unique film stocks in collection 
-    def _build_stock_list(self): # TODO: runs through all rolls added to collection and builds a dictionary from all film stocks currently
-        # Build a vector of unique film stocks
-        stock_data = set([roll.stock for roll in self.rolls])
-        # Initialize an empty dictionary for stock_dict
-        stock_dict = {}
-
-        for stock in stock_data:
-                if len(stock.split()) == 1:
-                        stk = "Unknown"
-                else:
-                        S = stock.split(" ")[0][0].upper()
-                        iso = stock.split(" ")[-1]
-                        stk = S + iso
-                stock_dict[stock] = stk
-        return stock_dict
-    
-    # Updates current stock list TODO
-    def update_stock_list(self):
-         self.stock_list = self._build_stock_list()
 
     # Searches through subdirectories for importing
     def _find_subdirectories(self):
@@ -494,3 +472,119 @@ class collectionObj:
 
             plt.tight_layout()
             plt.show()
+
+    def build_stocklist(self):
+        # stock = {
+        #     'manufacturer': '',
+        #     'stock': '',
+        #     'boxspeed': '',
+        #     'stk': '',
+        #     'process': 'C41',
+        #     'isColor': False,
+        #     'isBlackAndWhite': False,
+        #     'isInfrared': False,
+        #     'isNegative': False,
+        #     'isSlide': False
+        # }
+
+        EK100 = {
+            'manufacturer': 'Kodak',
+            'stock': 'Ektar 100',
+            'boxspeed': '100',
+            'stk': 'EK100',
+            'process': 'C41',
+            'isColor': True,
+            'isBlackAndWhite': False,
+            'isInfrared': False,
+            'isNegative': True,
+            'isSlide': False
+        }
+
+        G200 = {
+            'manufacturer': 'Kodak',
+            'stock': 'Gold 200',
+            'boxspeed': '200',
+            'stk': 'G200',
+            'process': 'C41',
+            'isColor': True,
+            'isBlackAndWhite': False,
+            'isInfrared': False,
+            'isNegative': True,
+            'isSlide': False
+        }
+
+        K400 = {
+            'manufacturer': 'Harman',
+            'stock': 'Kentmere 400',
+            'boxspeed': '400',
+            'stk': 'K400',
+            'process': 'BNW',
+            'isColor': False,
+            'isBlackAndWhite': True,
+            'isInfrared': False,
+            'isNegative': True,
+            'isSlide': False
+        }
+
+        FP4 = {
+            'manufacturer': 'Ilford',
+            'stock': 'FP4 125',
+            'boxspeed': '125',
+            'stk': 'FP4',
+            'process': 'BNW',
+            'isColor': False,
+            'isBlackAndWhite': True,
+            'isInfrared': False,
+            'isNegative': True,
+            'isSlide': False
+        }
+
+        self.stocklist = {
+            'EK100': EK100,
+            'G200': G200,
+            'K400': K400,
+            'FP4': FP4
+        }
+
+    def build_cameralist(self):
+        # CAMERA = {
+        #     'brand': '',
+        #     'model': '',
+        #     'id': '',
+        #     'serial': '',
+        #     'filmtype': '',
+        #     'filmformat': ''
+        # }
+
+        NIKONF3 = {
+            'brand': 'Nikon',
+            'model': 'F3',
+            'id': 'F3',
+            'serial': '',
+            'filmtype': '135',
+            'filmformat': '35mm'
+        }
+
+        ROLLEI35S = {
+            'brand': 'Rollei',
+            'model': '35S',
+            'id': 'R35S',
+            'serial': '',
+            'filmtype': '135',
+            'filmformat': '35mm'
+        }
+
+        PENTAX6X7 = {
+            'brand': 'Pentax',
+            'model': '6X7',
+            'id': 'P6X7',
+            'serial': '',
+            'filmtype': '120',
+            'filmformat': '6X7'
+        }
+
+        self.cameraList = {
+            'F3': NIKONF3,
+            'R35S': ROLLEI35S,
+            'P6X7': PENTAX6X7
+        }
