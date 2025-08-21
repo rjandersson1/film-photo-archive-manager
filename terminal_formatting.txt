@@ -1,0 +1,7 @@
+{"\033[31m"}WARNING:{"\033[0m"} # RED
+{"\033[35m"}ERROR:{"\033[0m"}   # PURPLE
+{"\033[33m"}DEBUG:{"\033[0m"}   # YELLOW
+{"\033[90m"}TEXT{"\033[0m"}     # GREY
+{"\033[32m"}SUCCESS{"\033[0m"}  # GREEN
+
+
