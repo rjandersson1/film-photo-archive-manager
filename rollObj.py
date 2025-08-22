@@ -42,11 +42,17 @@ class rollObj:
         self.countJpg = None                        # Count of jpg files, derived
         self.countRaw = None                        # Count of raw files, derived
 
-        # Film stock attributes TODO
-        self.stock = None                           # Film stock, derived
-        self.stk = None                             # Film stock ID, cast from first exposure
-        self.boxSpeed = None                        # ISO box value, derived
-
+        # Film stock attributes
+        self.manufacturer = None
+        self.stock = None
+        self.boxspeed = None
+        self.stk = None
+        self.process = None
+        self.isColor = None
+        self.isBlackAndWhite = None
+        self.isInfrared = None
+        self.isNegative = None
+        self.isSlide = None
 
         # Roll attributes
         self.process = None                         # Film development process (C41, E6, BNW), derived...? [TODO]
@@ -59,7 +65,8 @@ class rollObj:
         self.cameras = None                         # List of cameras used in the roll, derived
         self.lenses = None                          # List of lenses used in the roll, derived
         self.exposures = None                       # List of addresses to exposures in the roll, derived
-        self.format = None                          # Film format, derived from stock info
+        self.filmtype = None                      # Film format, derived from stock info. eg 135, 120, 45, 810
+        self.filmformat = None                      # Exposure format, eg 135, 6x7, 6x6, half frame, xpan
 
     # Main loop
     def process_roll(self):
@@ -325,6 +332,8 @@ class rollObj:
                 master.isOriginal = True
                 master.isCopy = False
                 master.containsCopies = False
+                master.copyCount = 0
+                master.original = master
         
         if not self.containsCopies:
             return
@@ -352,19 +361,100 @@ class rollObj:
 
     # 7) Update final film-specific metadata
     def update_metadata(self):
+        self.update_stock_metadata()
+        self.update_filmformat()
+    
+    # Update stock-related attributes using first image STK to identify stock among collection stock list.
+    def update_stock_metadata(self):
         # Grab film stock from first frame and cast it to all exposures
         img = self.images[0]
-        description = img.exif["XMP-dc"]["Description"]
-        stock = description.split(",")[-1].split(" ")[1:-1] #TODO: how do i join this together lol
-        boxSpeed = stock[-1]
-        self.stock = stock
-        self.boxSpeed = boxSpeed
-        for img in self.images:
-            img.stock = stock
-            img.boxSpeed = boxSpeed
+        key = img.stk
+        stkFound = False
 
+        # Identify stock in stock list using first image STK
+        for stock in self._collection.stocklist.values():
+            if stock['stk'] == key:
+                self.manufacturer = stock['manufacturer']
+                self.stock = stock['stock']
+                self.boxspeed = stock['boxspeed']
+                self.stk = stock['stk']
+                self.process = stock['process']
+                self.isColor = stock['isColor']
+                self.isBlackAndWhite = stock['isBlackAndWhite']
+                self.isInfrared = stock['isInfrared']
+                self.isNegative = stock['isNegative']
+                self.isSlide = stock['isSlide']
+                stkFound = True
+        # Cast metadata back to all images (if no STK found, casts None and throws warning)
+        for image in self.images:
+            image.stock = self.stock
+            image.boxspeed = self.boxspeed
+            image.stk = self.stk
+            image.process = self.process
+            image.isColor = self.isColor
+            image.isBlackAndWhite = self.isBlackAndWhite
+            image.isInfrared = self.isInfrared
+            image.isNegative = self.isNegative
+            image.isSlide = self.isSlide
         
-            
+        if WARNING and not stkFound:
+            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self._collection.stocklist.keys()}')
+
+    
+    # Using (unique) cameras and aspect ratios, attempt to identify flim format and whether it corresponds to the camera's typical aspect ratio
+    def update_filmformat(self):
+        # Grab unique list of unique cameras in roll (typically 1)
+        # TODO: for now, hardcode the first camera on the roll
+
+        camera = self.images[0].camera
+        self.cameras = []
+        self.cameras.append(camera)
+
+        # Search camera name in camera list TODO: make this more robust and general
+        key = camera
+        camfound = False
+        for cam in self._collection.cameralist.values():
+            term = cam['model']
+            for k in key.split(' '): # TODO: this is such shit code lol
+                if k == term:
+                    camfound = True
+                    self.filmtype = cam['filmtype'] # eg 135, 120
+                    self.filmformat = cam['filmformat'] # typical film format, eg. 35mm, 6x7, 6x6
+
+        if WARNING and not camfound:
+            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} cam not in camlist:\n\t\t"{key}" in {self._collection.cameralist.keys()}')
+
+        # Cast attributes back to all images on roll TODO: catch edge case where two cameras used for one roll...
+        for image in self.images:
+            image.filmtype = self.filmtype
+            image.filmformat = self.filmformat
+
+        # TODO: check aspect ratio and film format and check that they make sense... maybe to help with finding edge cases? (IDK this seems overboard...)
+
+
+
+
+
+
+
+
+
+
+# for img in self.images:
+#     key = img.dateExposed
+
+#     # Build dict of copies if date key matches
+#     if key not in copies_dict:
+#         copies_dict[key] = []
+#     copies_dict[key].append(img)
+
+# self.containsCopies = False
+# for group in copies_dict.values():
+#     if len(group) > 1:
+
+
+
+
 
 
     # =============== Helper Methods ============== #
