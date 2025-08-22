@@ -56,6 +56,7 @@ class exposureObj:
         self.camera = None                  # Camera, Derived
         self.cameraBrand = None             # Camera brand, EXIF
         self.cameraModel = None             # Camera model, EXIF
+        self.cam = None                     # Camera ID, Cast
         self.lensBrand = None               # Lens brand, EXIF
         self.lensModel = None               # Lens model, EXIF
         self.lens = None                    # Lens, Derived
@@ -80,8 +81,9 @@ class exposureObj:
         self.isInfrared = None              # Is infrared film, cast
         self.isNegative = None              # Is negative film, cast
         self.isSlide = None                 # Is slide film, cast
-        self.boxSpeed = None                # Box speed, cast
-        self.filmFormat = None              # Film format, cast
+        self.boxspeed = None                # Box speed, cast
+        self.filmtype = None                # Film type, cast (135, 120, 45, 810)
+        self.filmformat = None              # Film format, cast (35mm, half frame, 6x7, 6x6 etc)
         self.attributesFilm = {}
 
         # Duplicate Attributes
@@ -177,11 +179,13 @@ class exposureObj:
         
         # Exposure attributes (IPTC)
         self.location = exif["IPTC"]['City'] #IPTC
-        self.state = exif["IPTC"]['Province-State'] #IPTC
         self.country = exif["IPTC"]['Country-PrimaryLocationName'] #IPTC
         self.stk = exif["XMP-iptcCore"]['Scene'] #ExifIFD
         self.rating = int(exif["XMP-xmp"]['Rating']) if exif["XMP-xmp"]['Rating'] else None #XMP-xmp
         self.iso = int(exif["ExifIFD"]['ISO']) if exif["ExifIFD"]['ISO'] else None #ExifIDF
+        try: 
+            self.state = exif["IPTC"]['Province-State'] #IPTC
+        except KeyError: self.state = None
         try: 
             self.fNumber = float(exif["ExifIFD"]["FNumber"])
         except KeyError: self.fNumber = None
@@ -217,14 +221,8 @@ class exposureObj:
         except KeyError as e:
             self.isStitched = False
 
-        # Problem keys
-
-
         # Update derived attributes
         self._update_derived_attributes()
-
-        # Update cast attributes TODO
-        self._update_cast_attributes()
 
     # Processes all derived attributes
     def _update_derived_attributes(self):
@@ -232,7 +230,7 @@ class exposureObj:
         if self.exposureTime and self.iso and self.fNumber:
             self.exposureValue = np.log2((self.fNumber ** 2) / self.iso * (1 / self.exposureTime))
         else:
-            self.exposureValue = None
+            self.exposureValue =  'Unavailable'
 
         # Image data
         if self.width and self.height:
@@ -242,10 +240,6 @@ class exposureObj:
             self.isSquare = (self.aspectRatio > 0.9 and self.aspectRatio < 1.1) # between 0.9 and 1.1
             self.isHorizontal = self.aspectRatio > 1
             self.isPano = self.aspectRatio > 1.85
-    
-    # TODO: requests info from roll object to cast attributes to exposure object.
-    def _update_cast_attributes(self):
-        return
 
     # =========== Helper methods ================== #
 
@@ -307,22 +301,39 @@ class exposureObj:
     
     # prints all (filtered) attributes of an image as a table
     def getInfo(self, key=None):
-        print(f'[{self.roll.index}][{self.index}] INFO ==========================')
         # setup
         if self.attributes == {}: self.buildInfo()
         tab = '\t\t'
 
-        if key == None:
+        missingCount = 0
+        for dict in self.attributes.values():
+            for term in dict.keys():
+                val = dict[term]
+                if val == None:
+                    missingCount += 1
+
+        print(f'[{self.roll.index}][{self.index}] INFO: [{missingCount}] unassigned attributes ========================================================\n\n')
+
+
+
+        if key == 'none':
+            for dict in self.attributes.values():
+                for term in dict.keys():
+                    val = dict[term]
+                    if val == None:
+                        print(f'{term}{tab}{val}')
+        elif key == None:
             dict = self.attributes
             for subdict in dict.values():
-                for key in subdict.keys():
-                    val = subdict[key]
-                    if val == None: print(f'{key}{tab}{val}')
+                for term in subdict.keys():
+                    val = subdict[term]
+                    if val != None: print(f'{term}{tab}{val}')
         else:
             dict = self.attributes[key]
             for key in dict.keys():
                 val = dict[key]
                 print(f'{key}{tab}{val}') 
+
 
                 
 
@@ -390,8 +401,9 @@ class exposureObj:
         attributesFilm['isInfrared'] = self.isInfrared
         attributesFilm['isNegative'] = self.isNegative
         attributesFilm['isSlide'] = self.isSlide
-        attributesFilm['boxSpeed'] = self.boxSpeed
-        attributesFilm['filmFormat'] = self.filmFormat
+        attributesFilm['boxspeed'] = self.boxspeed
+        attributesFilm['filmtype'] = self.filmtype
+        attributesFilm['filmformat'] = self.filmformat
 
         # Duplicate Attributes
         attributesCopies['original'] = self.original
