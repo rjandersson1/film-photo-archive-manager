@@ -21,19 +21,32 @@ importlib.reload(exposureObj)
 importlib.reload(collectionObj)  
 importlib.reload(renderTool)
 
-# Define the file path
-# fileDir = r'C:\A_Documents\Documents\Coding\Lightroom_FileFinder\testFiles\Film Scanning'
-# fileDir = r'C:\A_Documents\Photography\Film Scanning' 
-# fileDir = r'/Users/rja/Photography/Film Scanning'
-fileDir = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest'
-# fileDir = r'D:\backup film scanning 26.06.23'
-
-collection = collectionObj.collectionObj(fileDir)
-
-for i in range(5):
+print("===================================================================")
+print("===================================================================")
+print("===================================================================")
+for i in range(20):
     print('\n')
 
 
-roll = collection.getRoll(72)
-image = roll.getImage(1)
-image.getInfo()
+# Define the file path
+library = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest'
+
+# Initialize
+collection = collectionObj.collectionObj(library)
+collection.build_directory_tree()
+
+# Import rolls
+collection.import_rolls([1,2,3])
+
+
+# Examples of other import options:
+# collection.import_rolls('1-99')
+# collection.import_rolls([1,2,3])
+# collection.import_rolls('all')
+# collection.import_roll(10)
+
+
+
+for i in range(3):
+    print('\n')
+print("===================================================================")
