@@ -32,22 +32,23 @@ class collectionObj:
         self.cameralist = {}
         self.build_stocklist()
         self.build_cameralist()
-
         self.rolls = []  # List to store RollMetadata instances for each roll
+
+    def init(self):
         self._import_rolls() # Import all rolls
-        
-        
-        
-        # self.stock_list = self._build_stock_list()
         self._process_rolls()
-        print("Collection imported!")
-        # self.get_size()
-        self.plot = self.Plot(self)
     
-    # Adds rolls to collection from a given directory
+    # Adds rolls to collection from a given directory TODO: make it possible to import specific folders
     def add_rolls_from_directory(self, folderDir):
         # List all subdirectories in folderDir
-        subfolders = os.listdir(folderDir)
+        
+        condition = (folderDir.split("/")[-1].split(" ")[0] == "2022" or folderDir.split("/")[-1].split(" ")[0] == "2023")
+        print(folderDir.split("/")[-1].split(" ")[0])
+        subfolders = []
+        if condition:
+            subfolders = os.listdir(folderDir)
+        else:
+            subfolders.append(os.path.basename(folderDir))
         
         # Sort subfolders by numeric prefix (before '_') if it exists
         sorted_subfolders = sorted(
@@ -58,8 +59,12 @@ class collectionObj:
         # Loop through each sorted subfolder and add to rolls
         for subFolder in sorted_subfolders:
             # skip ds_store files
-            if subFolder == '.DS_Store': continue
-            subdirectory = os.path.join(folderDir, subFolder)
+            if subFolder.startswith('.'): continue
+            if condition:
+                subdirectory = os.path.join(folderDir, subFolder)
+            else:
+                subdirectory = folderDir
+                
             # Create a RollMetadata instance for each subfolder and add it to rolls
             new_roll = rollObj(directory=subdirectory, collection=self)
             new_roll.process_roll()
@@ -475,134 +480,69 @@ class collectionObj:
             plt.tight_layout()
             plt.show()
 
+
     def build_stocklist(self):
-        # stock = {
-        #     'manufacturer': '',
-        #     'stock': '',
-        #     'boxspeed': '',
-        #     'stk': '',
-        #     'process': 'C41',
-        #     'isColor': False,
-        #     'isBlackAndWhite': False,
-        #     'isInfrared': False,
-        #     'isNegative': False,
-        #     'isSlide': False
-        # }
+        xlsx_path = os.path.join(os.getcwd(), "data", "stocklist.xlsx")
+        df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl").fillna("")
 
-        EK100 = {
-            'manufacturer': 'Kodak',
-            'stock': 'Ektar 100',
-            'boxspeed': '100',
-            'stk': 'EK100',
-            'process': 'C41',
-            'isColor': True,
-            'isBlackAndWhite': False,
-            'isInfrared': False,
-            'isNegative': True,
-            'isSlide': False
-        }
+        stocklist = {}
 
-        G200 = {
-            'manufacturer': 'Kodak',
-            'stock': 'Gold 200',
-            'boxspeed': '200',
-            'stk': 'G200',
-            'process': 'C41',
-            'isColor': True,
-            'isBlackAndWhite': False,
-            'isInfrared': False,
-            'isNegative': True,
-            'isSlide': False
-        }
+        for _, row in df.iterrows():
+            stk_id = row["stk"].strip()
+            if not stk_id:
+                continue
 
-        P400 = {
-            'manufacturer': 'Kodak',
-            'stock': 'Portra 400',
-            'boxspeed': '400',
-            'stk': 'P400',
-            'process': 'C41',
-            'isColor': True,
-            'isBlackAndWhite': False,
-            'isInfrared': False,
-            'isNegative': True,
-            'isSlide': False
-        }
+            entry = {
+                "stk": row["stk"].strip(),
+                "stock": row["stock"].strip(),
+                "manufacturer": row["manufacturer"].strip(),
+                "boxspeed": row["boxspeed"].strip(),
+                "process": row["process"].strip(),
+                "isColor": bool(int(row["isColor"])),
+                "isBlackAndWhite": bool(int(row["isBlackAndWhite"])),
+                "isInfrared": bool(int(row["isInfrared"])),
+                "isNegative": bool(int(row["isNegative"])),
+                "isSlide": bool(int(row["isSlide"])),
+            }
 
-        K400 = {
-            'manufacturer': 'Harman',
-            'stock': 'Kentmere 400',
-            'boxspeed': '400',
-            'stk': 'K400',
-            'process': 'BNW',
-            'isColor': False,
-            'isBlackAndWhite': True,
-            'isInfrared': False,
-            'isNegative': True,
-            'isSlide': False
-        }
+            stocklist[stk_id] = entry
 
-        FP4 = {
-            'manufacturer': 'Ilford',
-            'stock': 'FP4 125',
-            'boxspeed': '125',
-            'stk': 'FP4',
-            'process': 'BNW',
-            'isColor': False,
-            'isBlackAndWhite': True,
-            'isInfrared': False,
-            'isNegative': True,
-            'isSlide': False
-        }
+        self.stocklist = stocklist
 
-        self.stocklist = {
-            'EK100': EK100,
-            'G200': G200,
-            'P400': P400,
-            'K400': K400,
-            'FP4': FP4
-        }
+    def build_cameralist(self):
+        xlsx_path = os.path.join(os.getcwd(), "data", "cameralist.xlsx")
+        df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl").fillna("")
 
-    def build_cameralist(self): # TODO: make this better and more robust. make a script to scrape excel file to build list more easily
-        # CAMERA = {
-        #     'brand': '',
-        #     'model': '',
-        #     'id': '',
-        #     'serial': '',
-        #     'filmtype': '',
-        #     'filmformat': ''
-        # }
+        cameralist = {}
 
-        F3 = {
-            'brand': 'Nikon',
-            'model': 'F3',
-            'id': 'F3',
-            'serial': '',
-            'filmtype': '135',
-            'filmformat': '35mm'
-        }
+        for _, row in df.iterrows():
+            cam_id = row["id"].strip()
+            if not cam_id:
+                continue
 
-        R35S = {
-            'brand': 'Rollei',
-            'model': '35S',
-            'id': 'R35S',
-            'serial': '',
-            'filmtype': '135',
-            'filmformat': '35mm'
-        }
+            entry = {
+                "id": row["id"].strip(),
+                "model": row["model"].strip(),
+                "brand": row["brand"].strip(),
+                "serial": row["serial"].strip(),
+                "filmtype": row["filmtype"].strip(),
+                "filmformat": row["filmformat"].strip(),
+            }
 
-        P6X7 = {
-            'brand': 'Pentax',
-            'model': '6x7',
-            'id': 'P6X7',
-            'serial': '',
-            'filmtype': '120',
-            'filmformat': '6X7'
-        }
+            # store under id
+            cameralist[cam_id] = entry
+            # also allow lookup by "Brand Model" and by model
+            full = f'{entry["brand"]} {entry["model"]}'.strip()
+            if full:
+                cameralist[full] = entry
+            if entry["model"]:
+                cameralist[entry["model"]] = entry
 
-        self.cameralist = {
-            'F3': F3,
-            'R35S': R35S,
-            'P6X7': P6X7,
-            'Pentax 6x7': P6X7,
-            'Pentax 6X7': P6X7
-        }
+        self.cameralist = cameralist
+
+    # Copies over all files from a roll into a designated (cleaner) collection directory with consistent filename extensions.
+    def re_export_roll(self, roll):
+        # Confirm if filepath exists in working folder
+        filepath = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography/film/library'
+        #TODO...
+
