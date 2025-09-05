@@ -12,8 +12,8 @@ DICT['dict2'] = dict2
 
 val = DICT['dict1']
 
-for dict in DICT.items():
-    print(dict)
+# for dict in DICT.items():
+#     print(dict)
 
 
 ektar = {'stock': 'Ektar', 'manufacturer': 'Kodak', 'stk': 'EK100'}
@@ -29,6 +29,17 @@ stock = {
     'process': 'C41'
 }
 
-stocklist = {'EK100': ektar, 'Ektar 100': stock, 'kodak ektar 100': ektar, 'G200': gold}
+stocklist = {'EK100': ektar, 'G200': gold}
 
-print(stocklist['Ektar 100']['isNegative'])
+for stock in stocklist.values():
+    print(stock['stk'])
+
+
+# # Try to find stock (fall back to empty dict if missing)
+# stock = self._collection.stocklist.get(key, {})
+print('\n')
+print('\n')
+print('\n')
+
+for key in ['EK100', 'G200', 'XYZ']:
+    print(stocklist.get(key, {}))
