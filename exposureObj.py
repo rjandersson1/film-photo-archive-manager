@@ -162,67 +162,94 @@ class exposureObj:
 
     # Updates image attributes from EXIF.
     def _update_from_exif(self):
-        if self.exif is None:
+        if not self.exif:
             if ERROR:
-                print(f"[{self.roll.index}] [{self.index}]\ERROR: No EXIF data available for:\n\t\t{self.fileName}.")
+                print(f"[{self.roll.index}] [{self.index}] ERROR: No EXIF data available for {self.fileName}")
             return
 
-        exif = self.exif
-
         # File attributes
-        self.rawFileName = exif["XMP-xmpMM"]['PreservedFileName']
-        if self.roll.rawDirs:
+        self.rawFileName = self._get_exif(("XMP-xmpMM", "PreservedFileName"))
+        if self.roll.index == 12:
+            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> renaming exif-filename from .ARW to .dng to match raw files')
+            self.rawFileName = self.rawFileName.split(".")[0]+".dng"
+
+
+        if self.roll.rawDirs and self.rawFileName:
             rawDir = self.roll.rawDirs[0]
-            rawPath = os.path.join(rawDir, self.rawFileName)
+            rawName = self.rawFileName.split('.')[0]
+            rawPath = os.path.join(rawDir, (rawName+".ARW"))
             if os.path.isfile(rawPath):
                 self.rawFilePath = rawPath
-        
-        # Exposure attributes (IPTC)
-        self.location = exif["IPTC"]['City'] #IPTC
-        self.country = exif["IPTC"]['Country-PrimaryLocationName'] #IPTC
-        self.stk = exif["XMP-iptcCore"]['Scene'] #ExifIFD
-        self.rating = int(exif["XMP-xmp"]['Rating']) if exif["XMP-xmp"]['Rating'] else None #XMP-xmp
-        self.iso = int(exif["ExifIFD"]['ISO']) if exif["ExifIFD"]['ISO'] else None #ExifIDF
-        try: 
-            self.state = exif["IPTC"]['Province-State'] #IPTC
-        except KeyError: self.state = None
-        try: 
-            self.fNumber = float(exif["ExifIFD"]["FNumber"])
-        except KeyError: self.fNumber = None
+            rawPath = os.path.join(rawDir, (rawName+".dng"))
+            if os.path.isfile(rawPath):
+                self.rawFilePath = rawPath
+            else:
+                if WARNING:
+                    # print(f"\n[{self.roll.index}][{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} No rawDirs or rawFileName available to set rawFilePath for \n\t\t{self.fileName} <-> {self.rawFileName} in {rawPath}")
+                    a=1
 
-        try:
-            self.shutterSpeed = str(exif["ExifIFD"]['ShutterSpeedValue'])
+        # Exposure attributes
+        self.location   = self._get_exif(("IPTC", "City"))
+        self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
+        self.stk        = self._get_exif(("XMP-iptcCore", "Scene"))
+        self.rating     = self._get_exif(("XMP-xmp", "Rating"), conv=int)
+        self.iso        = self._get_exif(("ExifIFD", "ISO"), conv=int)
+        self.state      = self._get_exif(("IPTC", "Province-State"))
+        self.fNumber    = self._get_exif(("ExifIFD", "FNumber"), conv=float)
+
+        shutter_str     = self._get_exif(("ExifIFD", "ShutterSpeedValue"))
+        if shutter_str:
+            self.shutterSpeed = str(shutter_str)
             self.exposureTime = self._convertShutterspeed(self.shutterSpeed)
-        except KeyError: self.shutterSpeed = None
+        else:
+            self.shutterSpeed = None
 
-        # Datetime attributes
-        date = exif["ExifIFD"]["DateTimeOriginal"]
-        self.dateExposed = self._convertDateTime(date)
-        date = exif["ExifIFD"]["CreateDate"]
-        self.dateCreated = self._convertDateTime(date)
+        # Datetime
+        self.dateExposed = self._convertDateTime(
+            self._get_exif(("ExifIFD", "DateTimeOriginal"))
+        )
+        self.dateCreated = self._convertDateTime(
+            self._get_exif(("ExifIFD", "CreateDate"))
+        )
 
         # Camera & lens
-        self.cameraBrand = exif["IFD0"]['Make'] #IFD0
-        self.cameraModel = exif["IFD0"]['Model'] #IFD0
-        self.camera = f"{self.cameraBrand} {self.cameraModel}" if self.cameraBrand and self.cameraModel else None
-        self.lensBrand = exif["ExifIFD"]['LensMake'] #ExifIFD
-        self.lensModel = exif["ExifIFD"]['LensModel'] #ExifIFD
-        self.lens = f"{self.lensBrand} {self.lensModel}" if self.lensBrand and self.lensModel else None
-        self.focalLength = float(exif["ExifIFD"]['FocalLength'].split(' ')[0]) if exif["ExifIFD"]['FocalLength'] else None #ExifIFD
-        
-        # Image data
-        self.width = int(exif["File"]['ImageWidth']) if exif["File"]['ImageWidth'] else None #File
-        self.height = int(exif["File"]['ImageHeight']) if exif["File"]['ImageHeight'] else None #File
+        self.cameraBrand = self._get_exif(("IFD0", "Make"))
+        self.cameraModel = self._get_exif(("IFD0", "Model"))
+        self.camera      = f"{self.cameraBrand} {self.cameraModel}" if self.cameraBrand and self.cameraModel else None
 
-        # Duplicate Attributes
-        self.isGrayscale = bool(exif["XMP-crs"]['ConvertToGrayscale']) if bool(exif["XMP-crs"]['ConvertToGrayscale']) is not None else "ERROR" #XMP-crs
-        try:
-            self.isStitched = bool(exif["XMP-aux"]['IsMergedPanorama']) # XMP-aux
-        except KeyError as e:
-            self.isStitched = False
+        self.lensBrand   = self._get_exif(("ExifIFD", "LensMake"))
+        self.lensModel   = self._get_exif(("ExifIFD", "LensModel"))
+        self.lens        = f"{self.lensBrand} {self.lensModel}" if self.lensBrand and self.lensModel else None
+
+        self.focalLength = self._get_exif(("ExifIFD", "FocalLength"),
+                                        conv=lambda v: float(v.split(" ")[0]) if v else None)
+
+        # Image data
+        self.width  = self._get_exif(("File", "ImageWidth"), conv=int)
+        self.height = self._get_exif(("File", "ImageHeight"), conv=int)
+
+        # Duplicate attributes
+        self.isGrayscale = self._get_exif(("XMP-crs", "ConvertToGrayscale"),
+                                        conv=lambda v: bool(int(v)) if str(v).isdigit() else bool(v),
+                                        default=False)
+        self.isStitched  = self._get_exif(("XMP-aux", "IsMergedPanorama"),
+                                        conv=bool,
+                                        default=False)
 
         # Update derived attributes
         self._update_derived_attributes()
+
+    # Helper function to get nested EXIF values with optional conversion and default.
+    def _get_exif(self, path, conv=None, default=None):
+        d = self.exif
+        try:
+            for p in path:
+                d = d[p]
+            if d in (None, "", "NaN"):
+                return default
+            return conv(d) if conv else d
+        except Exception:
+            return default
 
     # Processes all derived attributes
     def _update_derived_attributes(self):
@@ -435,6 +462,16 @@ class exposureObj:
         self.attributes = attributes
 
 
+
+
+    def count_unassigned_attr(self):
+        self.buildInfo()
+        count = 0
+        for dict in self.attributes.values():
+            for term in dict.values():
+                if term == None:
+                    count += 1
+        return count
 
 
 
