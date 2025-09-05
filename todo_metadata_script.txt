@@ -67,3 +67,15 @@ long term:
 - add filtering and handling onto some web based app
 	
 	
+
+22. Aug 2025
+
+- fix all relevant TODOs
+- fix importer to only import select rolls
+- implement ability to re-export rolls into new (cleaner) dir
+- build stocklist and camlist
+	- maybe use a excel file in /data/ ?
+	- scrape current one?
+
+- fix stocklist key mismatches
+- fix importer to handle older rolls & also select which rolls to import...
