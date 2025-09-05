@@ -14,12 +14,17 @@ import glob
 # sys.path.append(os.path.abspath(r'C:\A_Documents\Documents\Coding\Lightroom_FileFinder'))
 from rollObj import rollObj
 
+WARNING = False
+DEBUG = True
+ERROR = False
+
 class collectionObj:
     def __init__(self, directory):
         print("[I]\tImporting collection...")
         # Initialize FilmCollection with a base directory
         self.directory = directory
-        self.subdirectories = self._find_subdirectories() # eg ['/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023']
+        self.paths_rolls = [] # List of tuples (index, folder_path) for each roll
+        # self.subdirectories = self._find_subdirectories() # eg ['/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest/2023']
 
         # Initialize filesizes
         self.sizeJpg = 0
@@ -546,3 +551,42 @@ class collectionObj:
         filepath = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography/film/library'
         #TODO...
 
+
+    # From directory list, imports specific roll (via index XXX)
+    def import_roll(self, index):
+        return
+    
+    # Identifies collection directory and builds a directory tree
+    def build_directory_tree(self):
+        path_library = self.directory # typically /.../photography/film/library/ (or legacy (debugging): .../filmCollectionTest/)
+
+        # Identify years in library
+        paths_years = []
+        for path in os.listdir(path_library):
+            if os.path.isdir(os.path.join(path_library, path)) and re.match(r'20\d{2}', path):
+                paths_years.append(os.path.join(path_library, path))
+
+        # Index folders from each year
+        for path_year in paths_years:
+            folders = os.listdir(path_year)
+            paths_rolls = []
+            for folder in folders:
+                folder_path = os.path.join(path_year, folder)
+                if os.path.isdir(folder_path):
+                    # Get index from folder name eg 11_22-10-03 Ektar 100 Zurich Flims Andeer --> 11 or 011_22-10-03 Ektar 100 Zurich Flims Andeer --> 11
+                    index = folder.split('_')[0]
+                    # build list and sort by index
+                    paths_rolls.append((index, folder_path))
+                    paths_rolls = sorted(paths_rolls, key=lambda x: int(x[0]))
+                    pass
+            
+            self.paths_rolls = paths_rolls
+
+        if DEBUG:
+            print(f'[I]\t{"\033[33m"}DEBUG:{"\033[0m"} Directory tree built with {len(self.paths_rolls)} rolls found:')
+            # print first two and last two entries and ;...; between. newline for each entry
+            for entry in (self.paths_rolls[:2] + ['...'] + self.paths_rolls[-2:]):
+                print(f'\t\t {entry}')
+
+
+        return
