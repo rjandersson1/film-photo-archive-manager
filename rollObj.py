@@ -20,11 +20,9 @@ WARNING = True
 ERROR = True
 
 
-
-# TODO: fix 'stk' attribute and related functions
 class rollObj:
     def __init__(self, directory, collection):
-        self._collection = collection  # Collection object reference
+        self.collection = collection  # Collection object reference
 
 
         # File handling
@@ -55,7 +53,7 @@ class rollObj:
         self.isSlide = None
 
         # Roll attributes
-        self.process = None                         # Film development process (C41, E6, BNW), derived...? [TODO]
+        self.process = None                         # Film development process (C41, E6, BNW), cast from stock info
         self.startDate = None                       # Roll start date, cast from first exposure
         self.endDate = None                         # Roll end date, cast from last exposure
         self.duration = None                        # Roll duration, derived
@@ -106,7 +104,7 @@ class rollObj:
                     jpgDirs.append(dir)
                     break
             for file in os.listdir(dir):
-                if file.lower().endswith('.arw'):
+                if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
                     rawDirs.append(dir)
                     break
             
@@ -119,14 +117,30 @@ class rollObj:
             # search through subdirs
             for file in os.listdir(path):
                 # Warn if contains subsubdirs
+                conditions_ignore = (
+                    file == "Scene" or
+                    file == "Camera"
+                )
+                if conditions_ignore: continue
                 if WARNING and os.path.isdir(os.path.join(path,file)):
                     print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} additional subfolders in image directory:\n\t\t"{file}" in {path}')
 
-                if file.lower().endswith('.jpg') or file.lower().endswith('.png'):
+                conditions = (
+                    file.lower().endswith('.jpg') or
+                    file.lower().endswith('.png')
+                )
+                conditions_ignore = (
+                    file == "Scene" or
+                    file == "Camera"
+                )
+                # print("[",index,'] ', conditions, conditions_ignore)
+                if conditions:
+                    if conditions_ignore:
+                        continue
                     jpgDirs.append(path)
                     break
             for file in os.listdir(path):
-                if file.lower().endswith('.arw'):
+                if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
                     rawDirs.append(path)
                     break
 
@@ -139,6 +153,7 @@ class rollObj:
         if rawDirs == []:
             if WARNING:
                 print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} RAW missing')
+                rawDirs.append(-1)
 
         # Print warnings if multiple jpg/raw dirs identified
         if len(jpgDirs) > 1:
@@ -298,7 +313,41 @@ class rollObj:
 
         self.containsCopies = False
         for group in copies_dict.values():
+
             if len(group) > 1:
+                if DEBUG:
+                    print(f'[{group[0].roll.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} copy found between:')
+                    for image in group:
+                        print(f'\t\t[{image.index}] {image.dateExposed}: {image.name}')
+
+                if group[0].roll.index == 12:
+                    print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 12...')
+                    for image in group:
+                        master = image
+                        
+                        # Handle master copy attributes
+                        master.isOriginal = True
+                        master.isCopy = False
+                        master.containsCopies = False
+                        master.copyCount = 0
+                        master.original = master
+                    continue
+
+                if group[0].roll.index == 6:
+                    print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 6...')
+                    for image in group:
+                        master = image
+                        
+                        # Handle master copy attributes
+                        master.isOriginal = True
+                        master.isCopy = False
+                        master.containsCopies = False
+                        master.copyCount = 0
+                        master.original = master
+                    continue
+                
+
+                        
                 self.containsCopies = True
                 # Sort by dateCreated, oldest is master
                 group.sort(key=lambda x: x.dateCreated)
@@ -372,7 +421,7 @@ class rollObj:
         stkFound = False
 
         # Identify stock in stock list using first image STK
-        for stock in self._collection.stocklist.values():
+        for stock in self.collection.stocklist.values():
             if stock['stk'] == key:
                 self.manufacturer = stock['manufacturer']
                 self.stock = stock['stock']
@@ -398,38 +447,47 @@ class rollObj:
             image.isSlide = self.isSlide
         
         if WARNING and not stkFound:
-            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self._collection.stocklist.keys()}')
+            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self.collection.stocklist.keys()}')
 
     
-    # Using (unique) cameras and aspect ratios, attempt to identify flim format and whether it corresponds to the camera's typical aspect ratio
     def update_filmformat(self):
-        # Grab unique list of unique cameras in roll (typically 1)
-        # TODO: for now, hardcode the first camera on the roll
+        # Pick first camera (assumes all images on roll are from same camera)
+        cameraBrand = self.images[0].cameraBrand
+        cameraModel = self.images[0].cameraModel
 
-        camera = self.images[0].camera
-        self.cameras = []
-        self.cameras.append(camera)
-
-        # Search camera name in camera list TODO: make this more robust and general
-        key = camera
+        self.filmtype = None
+        self.filmformat = None
         camfound = False
-        for cam in self._collection.cameralist.values():
-            term = cam['model']
-            for k in key.split(' '): # TODO: this is such shit code lol
-                if k == term:
+
+        if cameraBrand and cameraModel:
+            # Normalize (case-insensitive, strip spaces)
+            brand = str(cameraBrand).strip().lower()
+            model = str(cameraModel).strip().lower()
+
+            # EDGE CASE
+            if "skye" in model:
+                model = model.split(" - ")[0]
+
+            for cam in self.collection.cameralist.values():
+                cbrand = (cam.get("brand") or "").strip().lower()
+                cmodel = (cam.get("model") or "").strip().lower()
+                # print(brand, cbrand,";;;", model, cmodel)
+
+                if brand == cbrand and model == cmodel:
+                    self.filmtype = cam.get("filmtype")
+                    self.filmformat = cam.get("filmformat")
                     camfound = True
-                    self.filmtype = cam['filmtype'] # eg 135, 120
-                    self.filmformat = cam['filmformat'] # typical film format, eg. 35mm, 6x7, 6x6
+                    break
 
         if WARNING and not camfound:
-            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} cam not in camlist:\n\t\t"{key}" in {self._collection.cameralist.keys()}')
+            print(f'\n[{self.index}]\t\033[31mWARNING:\033[0m '
+                f'cam not in cameralist:\n\t\t"brand:{cameraBrand} model:{cameraModel}"')
 
-        # Cast attributes back to all images on roll TODO: catch edge case where two cameras used for one roll...
+        # Push attributes to all images
         for image in self.images:
             image.filmtype = self.filmtype
             image.filmformat = self.filmformat
 
-        # TODO: check aspect ratio and film format and check that they make sense... maybe to help with finding edge cases? (IDK this seems overboard...)
 
 
 
