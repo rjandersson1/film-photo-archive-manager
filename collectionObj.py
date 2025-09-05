@@ -554,6 +554,22 @@ class collectionObj:
 
     # From directory list, imports specific roll (via index XXX)
     def import_roll(self, index):
+        print(f"[I]\tImporting roll #{index}...")
+
+        # Find the path for the specified index in self.paths_rolls
+        path_roll = None
+        for idx, path in self.paths_rolls:
+            if int(idx) == index:
+                path_roll = path
+                break
+        if path_roll is None:
+            print(f"[I]\tRoll with index {index} not found in the collection.")
+            return
+
+        new_roll = rollObj(directory=path_roll, collection=self)
+        new_roll.process_roll()
+        self.rolls.append(new_roll)
+
         return
     
     # Identifies collection directory and builds a directory tree
@@ -590,3 +606,33 @@ class collectionObj:
 
 
         return
+    
+
+    # Imports multiple rolls given certain inputs:
+    #   'all' - imports all rolls in self.paths_rolls
+    #   [index1, index2, ...] - imports rolls with specified indices
+    #   (12,13,15) - imports rolls within the specified range (inclusive)
+    #   ('13-18') - imports rolls within the specified range (inclusive)
+    def import_rolls(self, rolls):
+
+        # Determine target indices based on input type
+        if isinstance(rolls, str) and rolls.lower() == 'all': # e.g., 'all'
+            target_indices = [int(idx) for idx, _ in self.paths_rolls]
+        elif isinstance(rolls, list): # e.g., [12, 15, 18]  
+            target_indices = [int(idx) for idx in rolls if isinstance(idx, int) or (isinstance(idx, str) and idx.isdigit())]
+        elif isinstance(rolls, tuple) and len(rolls) == 2 and all(isinstance(i, int) for i in rolls): # e.g., (12, 18)
+            target_indices = list(range(rolls[0], rolls[1] + 1))
+        elif isinstance(rolls, str) and '-' in rolls: # e.g., '13-18'
+            try:
+                start, end = map(int, rolls.split('-'))
+                target_indices = list(range(start, end + 1))
+            except ValueError:
+                print(f"[E]\tInvalid range format: {rolls}. Use 'start-end' format.")
+                return
+        else:
+            print(f"[E]\tInvalid input for importing rolls: {rolls}")
+            return
+
+        for index in target_indices:
+            self.import_roll(index)
+
