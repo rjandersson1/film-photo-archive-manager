@@ -1,0 +1,143 @@
+==============================
+ PYTHON CHEATSHEET (Offline)
+==============================
+
+------------------------------
+ DICTS (Python dictionaries)
+------------------------------
+Create: 
+    d = {"a": 1, "b": 2}
+
+Access:
+    d["a"]          # 1
+    d.get("c")      # None if missing
+    d.get("c", 0)   # default = 0
+
+Keys, values, items:
+    d.keys()        # dict_keys(['a','b'])
+    d.values()      # dict_values([1,2])
+    d.items()       # dict_items([('a',1),('b',2)])
+
+Iteration:
+    for k, v in d.items():
+        print(k, v)
+
+Check membership:
+    "a" in d        # True
+    "z" not in d
+
+Update:
+    d["c"] = 3
+    d.update({"d": 4})
+
+Remove:
+    d.pop("a")      # removes key 'a' and returns value
+    del d["b"]      # removes key 'b'
+
+Searching/filtering:
+    {k:v for k,v in d.items() if v > 1}
+
+Sorting:
+    sorted(d.items())                       # by key
+    sorted(d.items(), key=lambda x: x[1])   # by value
+
+------------------------------
+ PANDAS DATAFRAMES
+------------------------------
+Import:
+    import pandas as pd
+
+Create:
+    df = pd.DataFrame({"col1":[1,2], "col2":["a","b"]})
+
+Head/tail/info:
+    df.head()
+    df.tail()
+    df.info()
+    df.describe()
+
+Select:
+    df["col1"]              # Series
+    df[["col1","col2"]]     # multiple columns
+    df.iloc[0]              # row by index
+    df.loc[0,"col1"]        # row/col by label
+
+Filter:
+    df[df["col1"] > 1]
+
+Find unique/values:
+    df["col2"].unique()
+    df["col2"].value_counts()
+
+Sort:
+    df.sort_values("col1")
+    df.sort_index()
+
+Search (boolean masks):
+    df[df["col2"].str.contains("a")]
+    df.query("col1 > 1 and col2 == 'b'")
+
+Check for missing:
+    df.isna()
+    df.dropna()
+    df.fillna(0)
+
+Keys/columns:
+    list(df.columns)
+
+Iterate:
+    for idx, row in df.iterrows():
+        print(row["col1"], row["col2"])
+
+------------------------------
+ OS MODULE
+------------------------------
+Import:
+    import os
+    import shutil   # for copy/move
+
+Current directory:
+    os.getcwd()
+
+List files/dirs:
+    os.listdir(".")
+    for root, dirs, files in os.walk("path"):
+        ...
+
+Join paths (safe):
+    os.path.join("folder", "file.txt")
+
+Check path:
+    os.path.exists("path")
+    os.path.isfile("file.txt")
+    os.path.isdir("folder")
+
+Make dirs:
+    os.mkdir("newdir")
+    os.makedirs("a/b/c", exist_ok=True)  # recursive
+
+Remove:
+    os.remove("file.txt")
+    os.rmdir("dir")        # only empty
+    shutil.rmtree("dir")   # entire tree
+
+Copy/move:
+    shutil.copy("src.txt", "dst.txt")      # copy file
+    shutil.copy2("src.txt", "dst.txt")     # copy + metadata
+    shutil.copytree("srcdir", "dstdir")    # copy folder
+    shutil.move("src.txt", "dst.txt")      # move/rename
+
+File attributes:
+    os.path.getsize("file.txt")
+    os.path.getmtime("file.txt")   # last modified timestamp
+
+Environment:
+    os.environ["HOME"]
+
+------------------------------
+ QUICK TIPS
+------------------------------
+- Use pathlib (pathlib.Path) for more modern path handling.
+- Wrap file operations in try/except to handle missing files.
+- For large DataFrames, always check df.info() before heavy ops.
+- Dicts are insertion-ordered since Python 3.7 → good for predictable iteration.
