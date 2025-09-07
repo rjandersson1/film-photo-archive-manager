@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 import random
 
 def main():
-    renderer = Renderer(film_roll=None)  # Placeholder for FilmRoll object
+    renderer = Renderer(roll=None)  # Placeholder for FilmRoll object
     renderer.canvas, renderer.draw = renderer.build_canvas()
 
     renderer.rows = 7
@@ -30,8 +30,8 @@ def main():
 
 
 class Renderer:
-    def __init__(self, film_roll):
-        self.film_roll = film_roll
+    def __init__(self, roll):
+        self.roll = roll
         self.debug = False
 
         # Properties
@@ -91,11 +91,11 @@ class Renderer:
         # update font size with self.header_update(size)
 
         # Roll Metadata
-        self.film_stock = None
-        self.camera_model = None
-        self.date_start = None
-        self.date_end = None
-        self.duration = None
+        self.film_stock = self.roll.stock
+        self.camera_model = self.roll.cameras[0]
+        self.date_start = self.roll.startDate
+        self.date_end = self.roll.endDate
+        self.duration = self.roll.duration
         self.frame_count = 0 # individual frames
         self.photo_count = 0 # including edits, duplicates, etc.
         self.metadata_font_size = self.rebate_header_coords[1] - 2
@@ -170,7 +170,7 @@ class Renderer:
         # Build grid of center points and draw crosses
         self.grid = []
         self.grid_centered = []
-        self.rows = math.ceil(self.film_roll.countJpg / self.cols)
+        self.rows = math.ceil(self.roll.countJpg / self.cols)
 
         for row in range(self.rows):
             for col in range(self.cols):
@@ -282,11 +282,12 @@ class Renderer:
 
         # Helper function to process a single image
         def load_and_prepare_image(i):
-            if i > self.film_roll.countJpg - 1 or i > len(grid) - 1:
+            if i > self.frame_count - 1 or i > len(grid) - 1:
                 return None  # Skip invalid index
 
-            path = self.film_roll.image_data[i]['path']
-            exposure = self.film_roll.image_data[i]['exposure']
+            image = self.roll.images[i]
+            path = image.filePath
+            exposure = image.index
             try:
                 with Image.open(path) as img:
                     print(f"[THREAD] Processing image {exposure}...")
@@ -302,7 +303,7 @@ class Renderer:
                     img = img.convert("RGBA")
 
                     # Convert center coordinate to top-left paste location
-                    converted_cell = self.convert_grid_cell(self.grid_centered[exposure], img.width, img.height)
+                    converted_cell = self.convert_grid_cell(self.grid_centered[exposure-1], img.width, img.height)
                     paste_x, paste_y = int(converted_cell[0]), int(converted_cell[1])
 
                     return (img.copy(), paste_x, paste_y)  # copy to detach from context manager
@@ -328,19 +329,19 @@ class Renderer:
 
 
     def build_metadata(self):
-        roll = self.film_roll
+        roll = self.roll
         self.film_stock = roll.stock
         self.film_stk = roll.stk
-        self.camera_model = roll.camera
+        self.camera_model = roll.cameras[0]
         self.date_start = roll.startDate
         self.date_end = roll.endDate
         self.duration = roll.duration
-        self.frame_count = 0 # individual frames
-        self.photo_count = roll.countJpg
+        self.frame_count = roll.countExposures
+        self.photo_count = roll.countAll
         self.roll_path = roll.directory
         self.roll_index = roll.index
         self.roll_title = roll.title
-        self.roll_format = roll.format
+        self.roll_format = roll.filmformat
     
 
     def build_header(self):
@@ -360,8 +361,8 @@ class Renderer:
         dt = self.duration
 
         header_line_1 = f'#{idx}   {tit}'
-        header_line_2 = f'{stk}   {cam}   #{cnt}'
-        header_line_3 = f'{t0}'
+        header_line_2 = f'{stk}   {cam}   {cnt}exp'
+        header_line_3 = f'{t0} to {t1} ({dt})'
 
         self.header.append(header_line_1)
         self.header.append(header_line_2)
@@ -387,8 +388,9 @@ class Renderer:
         
     def render_image_metadata(self):
         grid = self.grid
-        roll = self.film_roll
-        for i in range(roll.countJpg):
+        roll = self.roll
+        for i in range(self.frame_count):
+            img = roll.images[i]
             cell = grid[i]
             xl = cell[0] + 12
             xm = cell[0] + round(self.rebate_header_coords[0] / 2)
@@ -396,15 +398,13 @@ class Renderer:
             yt = cell[1]
             yb = cell[1] + self.rebate_footer_coords[3]
 
-
-
-            metadata = roll.image_data[i]
-            idx = str(i)
-            date = str(metadata['date']).split('20')[-1]
-            lens = str(round(metadata['focalLength']))
-            cam = str(metadata['cameraModel']) + f"/{lens}"
-            stk = str(metadata['stock'])
-            rate = str(metadata['rating']) + "s"
+            idx = str(img.index)
+            # date in format YYMMDD
+            date = img.dateExposed.strftime('%d%m%y') if img.dateExposed else "??????"
+            lens = str(round(img.focalLength)) if img.focalLength else ""
+            cam = str(img.cameraModel) + f"/{lens}"
+            stk = str(roll.stk)
+            rate = (str((img.rating)) if img.rating else "?") + "S"
             font, text_color, bnw = self.process_emulsion(stk)
 
 
@@ -433,6 +433,24 @@ class Renderer:
             font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
             text_color = (255, 255, 255, 255)  # #
             bnw = 1
+            return font, text_color, bnw
+        
+        if stk == "EK100":
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (252, 194, 180, 255)  # #
+            bnw = 0
+            return font, text_color, bnw
+        
+        if stk == "U400":
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (252, 194, 180, 255)  # #
+            bnw = 0
+            return font, text_color, bnw
+        
+        if stk == "S400":
+            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
+            text_color = (252, 194, 180, 255)  # #
+            bnw = 0
             return font, text_color, bnw
 
         else: # ERROR
