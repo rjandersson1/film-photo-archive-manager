@@ -493,11 +493,12 @@ class collectionObj:
         stocklist = {}
 
         for _, row in df.iterrows():
-            stk_id = row["stk"].strip()
+            stk_id = row["KEY_ID"].strip()
             if not stk_id:
                 continue
 
             entry = {
+                "KEY_ID": row["KEY_ID"].strip(),
                 "stk": row["stk"].strip(),
                 "stock": row["stock"].strip(),
                 "manufacturer": row["manufacturer"].strip(),
