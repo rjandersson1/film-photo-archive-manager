@@ -31,12 +31,14 @@ for i in range(20):
 # Define the file path
 library = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest'
 
+target_roll = 'all'
+
 # Initialize
 collection = collectionObj.collectionObj(library)
 collection.build_directory_tree()
 
 # Import rolls
-collection.import_rolls([1,2,3])
+collection.import_rolls(target_roll)
 
 
 # Examples of other import options:
@@ -45,6 +47,9 @@ collection.import_rolls([1,2,3])
 # collection.import_rolls('all')
 # collection.import_roll(10)
 
+for roll in collection.rolls:
+    contact_sheet = renderTool.Renderer(roll)
+    contact_sheet.run()
 
 
 for i in range(3):
