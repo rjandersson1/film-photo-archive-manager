@@ -60,6 +60,7 @@ class exposureObj:
         self.lensBrand = None               # Lens brand, EXIF
         self.lensModel = None               # Lens model, EXIF
         self.lens = None                    # Lens, Derived
+        self.lns = None                     # Lens ID, Cast
         self.focalLength = None             # Focal length, EXIF
         self.attributesCamera = {}
 
@@ -220,7 +221,10 @@ class exposureObj:
         self.lensBrand   = self._get_exif(("ExifIFD", "LensMake"))
         self.lensModel   = self._get_exif(("ExifIFD", "LensModel"))
         self.lens        = f"{self.lensBrand} {self.lensModel}" if self.lensBrand and self.lensModel else None
+        self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0] if self.lensModel and '/' in self.lensModel else None
 
+        # todo: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
+        self.lns         = self.focalLength + '/' + self.maxAperture if self.focalLength and self.maxAperture else None
         self.focalLength = self._get_exif(("ExifIFD", "FocalLength"),
                                         conv=lambda v: float(v.split(" ")[0]) if v else None)
 
