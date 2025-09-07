@@ -36,9 +36,13 @@ class rollObj:
         self.sizeAll = None                         # Total size of roll, derived
         self.sizeJpg = None                         # Size of jpg files, derived
         self.sizeRaw = None                         # Size of raw files, derived
+        self.sizeExposures = None                  # Size of all exposures, derived
+        self.sizeCopies = None                    # Size of all copies, derived
         self.countAll = None                        # Total count of files in roll, derived
         self.countJpg = None                        # Count of jpg files, derived
         self.countRaw = None                        # Count of raw files, derived
+        self.countExposures = None                  # Count of exposures, derived
+        self.countCopies = None                     # Count of copies, derived
 
         # Film stock attributes
         self.manufacturer = None
@@ -60,7 +64,7 @@ class rollObj:
         self.index = None                           # Roll index, derived from folder name
         self.title = None                           # Title for the roll, derived from folder name
         self.containsCopies = None                  # Does roll contain images that are copies of a master? Derived from copy check
-        self.cameras = None                         # List of cameras used in the roll, derived
+        self.cameras = []                         # List of cameras used in the roll, derived
         self.lenses = None                          # List of lenses used in the roll, derived
         self.exposures = None                       # List of addresses to exposures in the roll, derived
         self.filmtype = None                      # Film format, derived from stock info. eg 135, 120, 45, 810
@@ -73,7 +77,7 @@ class rollObj:
         self.process_exif() # fetch exif data for all images
         self.sort_images() # sort images by exposure number (image.index)
         self.process_copies() # check for copies and nest them in the master copy object
-        self.update_metadata() # update film emulsion info for roll
+        self.update_metadata() # update film emulsion info for roll and other metadata
 
         
 
@@ -422,7 +426,7 @@ class rollObj:
 
         # Identify stock in stock list using first image STK
         for stock in self.collection.stocklist.values():
-            if stock['stk'] == key:
+            if stock['KEY_ID'] == key:
                 self.manufacturer = stock['manufacturer']
                 self.stock = stock['stock']
                 self.boxspeed = stock['boxspeed']
@@ -434,6 +438,10 @@ class rollObj:
                 self.isNegative = stock['isNegative']
                 self.isSlide = stock['isSlide']
                 stkFound = True
+        if WARNING and not stkFound:
+            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self.collection.stocklist.keys()}')
+
+
         # Cast metadata back to all images (if no STK found, casts None and throws warning)
         for image in self.images:
             image.stock = self.stock
@@ -445,9 +453,63 @@ class rollObj:
             image.isInfrared = self.isInfrared
             image.isNegative = self.isNegative
             image.isSlide = self.isSlide
+            if image.camera not in self.cameras:
+                self.cameras.append(image.cameraModel)
+
+        # Cast date attributes
+        self.startDate = self.images[0].dateExposed
+        self.endDate = self.images[-1].dateExposed
+        self.duration = (self.endDate - self.startDate).days + 1
         
-        if WARNING and not stkFound:
-            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self.collection.stocklist.keys()}')
+        # Cast file data attributes
+        self.sizeAll = shutil.disk_usage(self.directory).used
+        self.sizeJpg = 0
+        self.countJpg = 0
+        if self.jpgDirs:
+            for dir in self.jpgDirs:
+                for file in os.listdir(dir):
+                    if file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        file_path = os.path.join(dir, file)
+                        self.sizeJpg += os.path.getsize(file_path)
+                        self.countJpg += 1
+        self.sizeRaw = 0
+        self.countRaw = 0
+        if self.rawDirs and self.rawDirs[0] != -1:
+            for dir in self.rawDirs:
+                for file in os.listdir(dir):
+                    if file.lower().endswith(('.arw', '.dng')):
+                        file_path = os.path.join(dir, file)
+                        self.sizeRaw += os.path.getsize(file_path)
+                        self.countRaw += 1
+        
+        self.sizeExposures = 0
+        self.sizeCopies = 0 
+        self.countAll = 0
+        self.countExposures = 0
+        self.countCopies = 0
+        for img in self.images:
+            if img.isOriginal:
+                self.sizeExposures += img.fileSize
+                self.countExposures += 1
+                self.countAll = self.countAll + 1
+            if img.isCopy:
+                self.sizeCopies += img.fileSize
+                self.countCopies += 1
+                self.countAll = self.countAll + 1
+
+
+        
+        # Check to confirm dateExposed increases with index
+        # date_increasing = True
+        for i in range(1, len(self.images)):
+            if self.images[i].dateExposed < self.images[i-1].dateExposed:
+                # date_increasing = False
+                if WARNING:
+                    print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}')
+                break
+
+        
+        
 
     
     def update_filmformat(self):
