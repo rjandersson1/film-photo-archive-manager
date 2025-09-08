@@ -177,17 +177,20 @@ class exposureObj:
 
         if self.roll.rawDirs and self.rawFileName:
             rawDir = self.roll.rawDirs[0]
-            rawName = self.rawFileName.split('.')[0]
-            rawPath = os.path.join(rawDir, (rawName+".ARW"))
-            if os.path.isfile(rawPath):
-                self.rawFilePath = rawPath
-            rawPath = os.path.join(rawDir, (rawName+".dng"))
-            if os.path.isfile(rawPath):
-                self.rawFilePath = rawPath
+            rawName = self.rawFileName.split('.')[0] 
+            if rawName == -1 or rawDir == -1:
+                self.rawFilePath = None
             else:
-                if WARNING:
-                    # print(f"\n[{self.roll.index}][{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} No rawDirs or rawFileName available to set rawFilePath for \n\t\t{self.fileName} <-> {self.rawFileName} in {rawPath}")
-                    a=1
+                rawPath = os.path.join(rawDir, (rawName+".ARW"))
+                if os.path.isfile(rawPath):
+                    self.rawFilePath = rawPath
+                rawPath = os.path.join(rawDir, (str(rawName)+".dng"))
+                if os.path.isfile(rawPath):
+                    self.rawFilePath = rawPath
+                else:
+                    if WARNING:
+                        # print(f"\n[{self.roll.index}][{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} No rawDirs or rawFileName available to set rawFilePath for \n\t\t{self.fileName} <-> {self.rawFileName} in {rawPath}")
+                        a=1
 
         # Exposure attributes
         self.location   = self._get_exif(("IPTC", "City"))
