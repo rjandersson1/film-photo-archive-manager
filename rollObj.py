@@ -65,6 +65,7 @@ class rollObj:
         self.title = None                           # Title for the roll, derived from folder name
         self.containsCopies = None                  # Does roll contain images that are copies of a master? Derived from copy check
         self.cameras = []                         # List of cameras used in the roll, derived
+        self.cam = None
         self.lenses = None                          # List of lenses used in the roll, derived
         self.exposures = None                       # List of addresses to exposures in the roll, derived
         self.filmtype = None                      # Film format, derived from stock info. eg 135, 120, 45, 810
@@ -437,6 +438,8 @@ class rollObj:
                 self.isInfrared = stock['isInfrared']
                 self.isNegative = stock['isNegative']
                 self.isSlide = stock['isSlide']
+                self.fontPath = stock['font'] # 'fonts/Impact Label Reversed.ttf'
+                self.fontColor = tuple(map(int, stock['color'].split(','))) # '252, 194, 180, 255' --> tuple(rgba)
                 stkFound = True
         if WARNING and not stkFound:
             print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self.collection.stocklist.keys()}')
@@ -447,14 +450,24 @@ class rollObj:
             image.stock = self.stock
             image.boxspeed = self.boxspeed
             image.stk = self.stk
+            image.cam = self.cam
             image.process = self.process
             image.isColor = self.isColor
             image.isBlackAndWhite = self.isBlackAndWhite
             image.isInfrared = self.isInfrared
             image.isNegative = self.isNegative
             image.isSlide = self.isSlide
-            if image.camera not in self.cameras:
-                self.cameras.append(image.cameraModel)
+            if image.cam not in self.cameras:
+                self.cameras.append(image.cam)
+            
+        if len(self.cameras) > 1:
+            # print warning saying multiple cameras for one roll
+            if WARNING:
+                print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} multiple cameras found in roll: {self.cameras}')
+
+            
+            
+
 
         # Cast date attributes
         self.startDate = self.images[0].dateExposed
@@ -533,11 +546,11 @@ class rollObj:
             for cam in self.collection.cameralist.values():
                 cbrand = (cam.get("brand") or "").strip().lower()
                 cmodel = (cam.get("model") or "").strip().lower()
-                # print(brand, cbrand,";;;", model, cmodel)
 
                 if brand == cbrand and model == cmodel:
                     self.filmtype = cam.get("filmtype")
                     self.filmformat = cam.get("filmformat")
+                    self.cam = cam.get("id")
                     camfound = True
                     break
 
