@@ -76,7 +76,7 @@ class Renderer:
             'custom'    # catch-all for unusual sizes
         }
         self.frame_format = None
-        self.rebate_image_path = 'data/film_rebates/135-color.png'
+        self.rebate_image_path = 'data/film_rebates/135-color.png' 
         self.rebate_image = Image.open(self.rebate_image_path)
         self.rebate_width, self.rebate_height = self.rebate_image.size
         self.rebate_height = self.rebate_height + self.px(5)
@@ -400,12 +400,12 @@ class Renderer:
 
             idx = str(img.index)
             # date in format YYMMDD
-            date = img.dateExposed.strftime('%d%m%y') if img.dateExposed else "??????"
+            date = img.dateExposed.strftime('%y-%m-%d') if img.dateExposed else "??-??-??"
             lens = str(round(img.focalLength)) if img.focalLength else ""
             cam = str(img.cameraModel) + f"/{lens}"
             stk = str(roll.stk)
             rate = (str((img.rating)) if img.rating else "?") + "S"
-            font, text_color, bnw = self.process_emulsion(stk)
+            font, text_color, emulsion = self.get_font(stk)
 
 
             # print text onto image
@@ -415,53 +415,25 @@ class Renderer:
             self.draw.text((xr, yb), rate, font=font, fill=text_color, anchor='rt')
             self.draw.text((xl, yb), date, font=font, fill=text_color, anchor='lt')
 
-    def process_emulsion(self, stk):
-        if stk == "P400":
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (252, 194, 120, 255)  # #FCC278
-            bnw = 0
-            return font, text_color, bnw
-            
-        
-        if stk == "G200":
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (252, 194, 180, 255)  # #
-            bnw = 0
-            return font, text_color, bnw
+    def get_font(self, stk):
 
-        if stk == "FP4":
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (255, 255, 255, 255)  # #
-            bnw = 1
-            return font, text_color, bnw
-        
-        if stk == "EK100":
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (252, 194, 180, 255)  # #
-            bnw = 0
-            return font, text_color, bnw
-        
-        if stk == "U400":
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (252, 194, 180, 255)  # #
-            bnw = 0
-            return font, text_color, bnw
-        
-        if stk == "S400":
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (252, 194, 180, 255)  # #
-            bnw = 0
-            return font, text_color, bnw
+        # Setup
+        fontSize = 40
+        defaultColor = (255, 255, 255, 255)  # WHITE
+        defaultFontPath = 'fonts/Impact Label Reversed.ttf'
+        roll = self.roll
 
-        else: # ERROR
-            font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=40)
-            text_color = (255, 0, 255, 255)  # #MAGENTA
-            bnw = 0
-            print(f"ERROR FONT FIND FOR EMULSION: {stk}")
-            return font, text_color, bnw
+        # Catch missing font/color cases
+        if roll.fontPath is None or roll.fontColor is None:
+            roll.fontPath = defaultFontPath
+            roll.fontColor = defaultColor
 
+        # Cast attributes and return
+        font = ImageFont.truetype(roll.fontPath, size=fontSize)
+        text_color = roll.fontColor
+        emulsion = [roll.isColor, roll.isBlackAndWhite, roll.isSlide]
 
-        
+        return font, text_color, emulsion
 
 if __name__ == "__main__":
     main()
