@@ -29,7 +29,7 @@ for i in range(20):
 
 
 # Define the file path
-library = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTest'
+library = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/filmCollectionTestAll'
 
 target_roll = 'all'
 
