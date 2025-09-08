@@ -509,6 +509,8 @@ class collectionObj:
                 "isInfrared": bool(int(row["isInfrared"])),
                 "isNegative": bool(int(row["isNegative"])),
                 "isSlide": bool(int(row["isSlide"])),
+                "font": row["font"].strip() if pd.notna(row["font"]) else None,
+                "color": row["color"].strip() if pd.notna(row["color"]) else None,
             }
 
             stocklist[stk_id] = entry
