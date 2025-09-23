@@ -41,6 +41,20 @@ Sorting:
     sorted(d.items())                       # by key
     sorted(d.items(), key=lambda x: x[1])   # by value
 
+Search keys:
+# check if key exists
+if "a" in d:
+    row = ("a", d["a"])     # ('a', 1)
+
+# safe one-liner
+row = ("a", d.get("a")) if "a" in d else None
+
+# loop over items to find by condition
+for k, v in d.items():
+    if k == "b":
+        row = (k, v)        # ('b', 2)
+        break
+
 ------------------------------
  PANDAS DATAFRAMES
 ------------------------------
