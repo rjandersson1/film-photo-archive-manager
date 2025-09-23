@@ -415,8 +415,8 @@ class rollObj:
 
     # 7) Update final film-specific metadata
     def update_metadata(self):
-        self.update_stock_metadata()
         self.update_filmformat()
+        self.update_stock_metadata()
     
     # Update stock-related attributes using first image STK to identify stock among collection stock list.
     def update_stock_metadata(self):
