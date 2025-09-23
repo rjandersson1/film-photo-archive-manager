@@ -1,9 +1,4 @@
-# Todo
-# build contact sheet headers
-# work on metadata headers
-# merge with film roll
-# automatically detect film format and stock
-# build other contact sheets (6x6, 6x7)
+# renderTool remake
 
 
 # Import libraries
@@ -15,425 +10,766 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 import random
 
-def main():
-    renderer = Renderer(roll=None)  # Placeholder for FilmRoll object
-    renderer.canvas, renderer.draw = renderer.build_canvas()
-
-    renderer.rows = 7
-    renderer.cols = 5
-    renderer.build_grid()
-    renderer.render_rebates()
-    renderer.render_images()  
-
-    # Show canvas to user (open file)
-    renderer.canvas.show()  # This will open the default image viewer with the canvas
-
-
 class Renderer:
     def __init__(self, roll):
-        self.roll = roll
-        self.debug = False
+        print("\n\n\n\n\n\n\n\n\n")
+        self.roll = roll            # roll metadata object
+        self.framecount = roll.countExposures
+        self.emulsion = (self.roll.isColor, self.roll.isBlackAndWhite, self.roll.isSlide)
+        self.dpi = 300              # dots per inch
+        self.sheet_size = [210, 297]  # sheet dimensions
+        self.margin = 5      # page side margins
+        self.margin_top = self.margin * 3
+        self.margin_rows = 4 # mm between rows
+        self.sheet_print_size = [self.sheet_size[0] - 2 * self.margin, self.sheet_size[1] - 2 * self.margin]
+        self.canvas = None          # PIL image canvas
+        self.canvas_2 = None
+        self.draw = None            # PIL draw context
+        self.rebate_metadata = []
+        self.font = ImageFont.truetype(self.roll.fontPath, size=self.to_px(3))  # pick size you want
+        self.fontColor = self.roll.fontColor
+        self.rebate_size = None
+        self.film_size = None
 
-        # Properties
-        # Sheet properties
-        self.canvas = None
-        self.draw = None
-        self.rows = None
-        self.cols = None
-        self.sheet_size = {
-            'width': 2480,  # A4 at 300 DPI
-            'height': 3508  # A4 at 300 DPI
-        }
-        self.sheet_margins = { # margin['top']
-            'top': 150,     # ~0.33" (8.5 mm)
-            'bottom': 100,  # a bit larger for captions or notes
-            'left': 100,
-            'right': 100
-        }
-        self.grid = []
-        self.grid_centered = []
+    def render(self):
+        # 1. prepare layout + assets
+        self.load_format()
 
-        # Frame properties
-        self.film_formats = {135, 120, 110, 45, 810}
-        self.film_format = None
-        self.frame_formats = {
-            'half',     # 18×24 mm (half-frame 35mm)
-            'full',     # 24×36 mm (standard 35mm)
-            'panoramic',# 24×58 mm or 24×65 mm (XPan style)
-            '645',      # 56×42 mm (medium format 645)
-            '6x4.5',    # alias for 645
-            '6x6',      # 56×56 mm
-            '6x7',      # 56×70 mm
-            '6x8',      # 56×76 mm
-            '6x9',      # 56×84 mm
-            '6x12',     # 56×112 mm (panoramic MF)
-            '6x17',     # 56×168 mm (ultra-pan MF)
-            '6x24',     # 56×224 mm (rare panoramic)
-            '4x5',      # 102×127 mm (large format)
-            '5x7',      # 127×178 mm
-            '8x10',     # 203×254 mm
-            '11x14',    # 279×356 mm
-            'custom'    # catch-all for unusual sizes
-        }
-        self.frame_format = None
-        self.rebate_image_path = 'data/film_rebates/135-color.png' 
-        self.rebate_image = Image.open(self.rebate_image_path)
-        self.rebate_width, self.rebate_height = self.rebate_image.size
-        self.rebate_height = self.rebate_height + self.px(5)
-        self.rebate_center = (round(self.rebate_width / 2), round(self.rebate_height / 2))
-        self.rebate_header_coords = (425, 27, 12, 0) # w,h,x,y
-        self.rebate_footer_coords = (425, 27, 12, 386) # w,h,x,y
-
-        # Header
-        self.header = []
-        self.header_font_size = [60,40,30]
-        self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=2)
-        # update font size with self.header_update(size)
-
-        # Roll Metadata
-        self.film_stock = self.roll.stock
-        self.camera_model = self.roll.cameras[0]
-        self.date_start = self.roll.startDate
-        self.date_end = self.roll.endDate
-        self.duration = self.roll.duration
-        self.frame_count = 0 # individual frames
-        self.photo_count = 0 # including edits, duplicates, etc.
-        self.metadata_font_size = self.rebate_header_coords[1] - 2
-        self.metadata_font = ImageFont.truetype("fonts/helvetica-neue-55/HelveticaNeueBold.ttf", size=self.metadata_font_size)
-        self.metdata_font_color = {
-            'default': (255, 255, 255, 255),  # white
-            'P400_1': (252, 194, 120, 255),  # #FCC278
-            'P400_2': (215, 107, 46, 255),  # #D76B2E
-            'K400_1': (143, 143, 143, 255)  # #8F8F8F
-        }
-
-    # Methods
-    def run(self):
-        print('\n\n\nRunning renderer...\n')
+        # 2. build canvas + grid
         self.build_canvas()
-        self.cols = 5
-        # self.rows = 7
-        self.build_metadata()
-        self.build_header()
         self.build_grid()
-        print("Rendering images...")
-        self.render_rebates()
+        
+        # 3. Handle metadata
+        self.process_metadata()
+
+        # 4. Render elements
+        # self.paste_images()
+        # self.paste_rebates()
+        # self.paste_metadata()
+        # self.paste_all()
         self.render_images()
         self.render_header()
-        self.render_image_metadata()
-        print("Render complete! Opening file...")
+
+        # 5. Show
         self.canvas.show()
 
-    # Create canvas for contact sheet. Returns image object and ImageDraw object.
+    # Loads film format (35mm, 6x7 etc)
+    def load_format(self):
+        key = self.roll.filmformat
+        format = FORMATS.get(key)
+        if not format:
+            raise KeyError(f"Format {key} not found in FORMATS")
+        self.rebate_size = (format["film_w"], format["film_h"]) # in mm
+        self.film_size = (format["frame_w"], format["frame_h"]) # in mm
+
+    # Builds initial sheet with dimensions
     def build_canvas(self):
-        debug = True
-        # Build a blank canvas with ImageDraw.draw
-        canvas = Image.new("RGBA", (self.sheet_size['width'], self.sheet_size['height']), (0, 0, 0, 255))
-        if self.debug:
-            canvas = Image.new("RGBA", (self.sheet_size['width'], self.sheet_size['height']), (0, 0, 255, 255))
+        DEBUG = False
+        canvas = Image.new("RGBA", (self.to_px(self.sheet_size[0]), self.to_px(self.sheet_size[1])), (0, 0, 0, 255))
         draw = ImageDraw.Draw(canvas)
-
-        if self.debug:
-            # Draw guidelines for debugging
-            def draw_guideline(x, y, w, orientation, sheet_size, draw):
-                """
-                Draws a white guideline with width `w` at (x, y), spanning the canvas.
-                - orientation: 'horizontal' or 'vertical'
-                - sheet_size: dict with 'width' and 'height' in pixels
-                - draw: ImageDraw.Draw object
-                """
-                if orientation == 'horizontal':
-                    draw.line([(0, y), (sheet_size['width'], y)], fill=(255, 255, 255, 255), width=w)
-                elif orientation == 'vertical':
-                    draw.line([(x, 0), (x, sheet_size['height'])], fill=(255, 255, 255, 255), width=w)
-
-            draw_guideline(self.sheet_margins['left'], 0, 2, 'vertical', self.sheet_size, draw)
-            draw_guideline(self.sheet_size['width'] - self.sheet_margins['right'], 0, 2, 'vertical', self.sheet_size, draw)
-            draw_guideline(0, self.sheet_margins['top'], 2, 'horizontal', self.sheet_size, draw)
-            draw_guideline(0, self.sheet_size['height'] - self.sheet_margins['bottom'], 2, 'horizontal', self.sheet_size, draw)
-
+        if DEBUG:
+            draw = self.debug_draw_margins(draw)
+        
         self.canvas = canvas
+        self.canvas_2 = canvas.copy()
         self.draw = draw
-        return canvas, draw
+
+    # draws pink guidelines around self.sheet_print_size inside the sheet
+    def debug_draw_margins(self, draw):
+        w, h = self.sheet_size[0], self.sheet_size[1]
+        w_p, h_p = self.sheet_print_size[0], self.sheet_print_size[1]
+
+        d_x = (w - w_p) / 2
+        d_y = (h - h_p) / 2
+
+        # coords of printable area
+        x0, y0 = self.to_px(d_x), self.to_px(d_y)
+        x1, y1 = self.to_px(w - d_x), self.to_px(h - d_y)
+
+        # draw lines (pink)
+        color = (255, 0, 128, 255)
+        width = 3
+        draw.line([(x0, y0), (x1, y0)], fill=color, width=width)  # top
+        draw.line([(x0, y1), (x1, y1)], fill=color, width=width)  # bottom
+        draw.line([(x0, y0), (x0, y1)], fill=color, width=width)  # left
+        draw.line([(x1, y0), (x1, y1)], fill=color, width=width)  # right
+
+        return draw
     
+    # Build a grid of coordinates for center points for each photo
     def build_grid(self):
-        debug = True
-        # Create a grid for the center points of each image.
-        # Defined by rows x cols. (grab from self.rows self.cols)
-        # Col spacing (from left of canvas): self.sheet_margins['left'] + round(self.rebate_width / 2)
-        # Subsequent col spacing: ++self.rebate_width
-        # Row spacing: (from top of canvas): self.mnargin['top'] + round(self.rebate_height / 2)
-        # Subsequent row spacing: ++self.rebate_height
-        # draw a 8px diameter cross at the center coordinate for each.
-        # build grid as an array of x,y coordinates corresponding to the self.frame_count. (eg. grid[4] = (x ,y) corresponds to 5th frame coordinate.)
+        sheet = (self.sheet_size[0], self.sheet_size[1])
+        print_area = (self.sheet_print_size[0], self.sheet_print_size[1])
+        rebate = (self.rebate_size[0], self.rebate_size[1]) # frame size of rebate (incl margins) w,h
 
-        # Build grid of center points and draw crosses
-        self.grid = []
-        self.grid_centered = []
-        self.rows = math.ceil(self.roll.countJpg / self.cols)
+        # calculate optimal grid size
+        cols, rows, k = self.find_optimal_grid(print_area, rebate, self.framecount)
 
-        for row in range(self.rows):
-            for col in range(self.cols):
-                x = self.sheet_margins['left'] + round(self.rebate_width / 2) + col * self.rebate_width
-                y = self.sheet_margins['top'] + round(self.rebate_height / 2) + row * self.rebate_height
+        # Resize rebate and film sizes by k
+        self.k = k
+        # self.rebate_size = [dim * k for dim in self.rebate_size]
+        # self.film_size = [dim * k for dim in self.film_size]
 
-                self.grid_centered.append((x, y))
-        # Draw crosses at each grid point
-                if self.debug:
-                    # Draw 8px cross centered at (x, y)
-                    cross_len = 16  # half of 8px
-                    self.draw.line([(x - cross_len, y), (x + cross_len, y)], fill=(255, 255, 255, 255), width=2)
-                    self.draw.line([(x, y - cross_len), (x, y + cross_len)], fill=(255, 255, 255, 255), width=2)
+        # Get absolute center coordinates for placement of each frame (x,y) with origin in top left
+        grid = []
+        w = rebate[0] * k
+        h = rebate[1] * k
+        y0 = (sheet[1] - print_area[1]) / 2 + self.margin_top
+        x0 = (sheet[0] - print_area[0]) / 2
 
-        # Convert grid center coordinates to top-left coordinates
-        self.grid = self.convert_grid(self.grid_centered)
+        for row in range(rows):
+            for col in range(cols):
+                x = x0 + w * (col + 0.5)
+                y = y0 + h * (row + 0.5)
+                if row > 0:
+                    y += row * self.margin_rows
+                grid.append((x,y))
 
-        # Draw top left corner of each frame as a 16px BLUE cross, width 2.
-        if self.debug:
-            for x, y in self.grid:
-                cross_len = 16
-                self.draw.line([(x - cross_len, y), (x + cross_len, y)], fill=(125, 125, 255, 255), width=2)
-                self.draw.line([(x, y - cross_len), (x, y + cross_len)], fill=(125, 125, 255, 255), width=2)
+        self.grid = grid
 
-        # Draw rebate image border as width 1 rectangle GREEN centered on each self.grid point
-        if self.debug:
-            for x, y in self.grid:
-                # Draw a rectangle around the rebate image
-                self.draw.rectangle(
-                    [x, y, x + self.rebate_width, y + self.rebate_height],
-                    outline=(0, 255, 0, 255),  # Green outline
-                    width=1
-                )  
+        self.build_text_coords()
 
-        return self.grid, self.grid_centered
-    
-    # convert mm to px
-    def px(self, value):
-        dpi = 300
-        return round(value * dpi / 25.4)  # Convert mm to inches, then to pixels
-    
-    def convert_grid(self, grid, width=None, height=None):
-        if width is None:
-            width = self.rebate_width
-        if height is None:
-            height = self.rebate_height
-        """
-        Convert grid of center coordinates to top-left coordinates for each frame.
-        :param grid: List of tuples (x, y) representing center coordinates.
-        :return: List of tuples (x, y) representing top-left coordinates.
-        """
-        converted = []
-        for x, y in grid:
-            top_left_x = x - round(width / 2)
-            top_left_y = y - round(height / 2)
-            converted.append((top_left_x, top_left_y))
-        return converted
-    
-    def convert_grid_cell(self, cell, width, height):
-        x0 = cell[0]
-        y0 = cell[1]
-        x1 = x0 - round(width / 2)
-        y1 = y0 - round(height / 2) - self.px(2.5) # idk why but need to offset vertically
-        cell = (x1, y1)
-        return cell
+    def find_optimal_grid(self, sheet, frame, n):
+        buffer = self.margin_rows
+        cols = 0
+        rows = 0
+        k_old = 0.0
+        k_new = 0.0
+        k = 0.0
+        k_margin = 0.1
+        tup = (cols, rows, k)  # (best_cols, best_rows, best_k)
+        eps = 1e-12
 
-    
+        best_unscaled = None  # (cols, rows) that fit at k = 1.0
 
-    # Paste rebate .png onto canvas and return canvas, draw objects.
-    # grab image file from self.rebate_image_path
-    # place rebate images at each self.grid point.
-    def render_rebates(self):
-        # Load rebate image
-        if not self.rebate_image:
-            self.rebate_image = Image.open(self.rebate_image_path).convert("RGBA")
-            # TODO: if self.roll.process == 'bnw': set image to bnw!
+        # find the combination; first prefer any that fit unscaled (k = 1.0), then best k<=1 with margin preference for more cols
+        for cols in range(1, n + 1):
+            rows = math.ceil(n / cols)
+            k_col = sheet[0] / (cols * frame[0])
+            k_row = sheet[1] / (rows * (frame[1] + buffer))
 
-        # Paste rebate image at each grid point
-        for x, y in self.grid:
-            # Calculate position to paste the rebate image
-            position = (x, y)
-            self.canvas.paste(self.rebate_image, position, self.rebate_image)
+            print(f"Trying {cols} cols x {rows} rows: k_col={k_col:.3f}, k_row={k_row:.3f}")
 
-        return self.canvas, self.draw
-    
-    # paste each image to the canvas at each grid point. Will need to convert from center to frame top/left coordinates.
-    # run through each coordinate in self.grid_centered, convert to topleft with self.convert_grid() and frame size is 300x200 px.
-    # if debug, draw a red rectangle for each image frame (as a placeholder unntil I get images
+            # if it fits unscaled, record as a k=1.0 candidate
+            if k_col >= 1.0 - eps and k_row >= 1.0 - eps:
+                if best_unscaled is None:
+                    best_unscaled = (cols, rows)
+                else:
+                    bu_cols, bu_rows = best_unscaled
+                    # prefer more columns; if tied, fewer rows
+                    if cols > bu_cols or (cols == bu_cols and rows < bu_rows):
+                        best_unscaled = (cols, rows)
+                # still continue loop to see if there is an even wider unscaled option
+                continue
+
+            # otherwise, evaluate scaled option (no upscaling)
+            k_new = min(k_col, k_row)
+            if k_new > 1:
+                continue
+
+            best_cols, best_rows, best_k = tup
+
+            # strictly better k → take it
+            if k_new > best_k + eps:
+                k_old = k_new
+                tup = (cols, rows, k_new)
+                continue
+
+            # within margin → prefer more columns
+            if (best_k - k_new) <= k_margin + eps and cols > best_cols:
+                k_old = k_new
+                tup = (cols, rows, k_new)
+                continue
+
+            # equal k (within eps) and more columns → prefer more columns
+            if abs(k_new - best_k) <= eps and cols > best_cols:
+                k_old = k_new
+                tup = (cols, rows, k_new)
+
+        # If any unscaled layout exists, prefer it (k = 1.0), maximizing columns
+        if best_unscaled is not None:
+            uc, ur = best_unscaled
+            print(f"Optimal grid (no scaling): {uc} cols x {ur} rows with k=1.000")
+            return uc, ur, 1.0
+
+        print(f"Optimal grid: {tup[0]} cols x {tup[1]} rows with k={tup[2]:.3f}")
+        return tup[0], tup[1], tup[2]
+
+    # Converts mm to pixels at self.dpi
+    def to_px(self, mm):
+        return round(mm * self.dpi / 25.4)
+
+    # Calculate text box anchors for each image/metadata
+    def build_text_coords(self):
+        # margins in mm → px
+        tm_mm = 1.5
+        th_mm = 0
+        tm = int(round(self.to_px(tm_mm)))
+        th = int(round(self.to_px(th_mm)))
+
+        # get frame (rebate) pixel size
+        # if you already have it, use that; otherwise open once
+        rebate = self.get_base_rebate_image()
+        w_px, h_px = rebate.size
+        try:
+            rebate.close()
+        except Exception:
+            pass
+
+        coords = []
+        for _ in range(self.framecount):
+            left  = tm
+            right = w_px - tm
+            top   = th
+            bot   = h_px - th
+            cx    = w_px // 2
+
+            coords.append({
+                "TL": (left,  top, "lt"),
+                "TC": (cx,    top, "mt"),
+                "TR": (right, top, "rt"),
+                "BL": (left,  bot, "lb"),
+                "BC": (cx,    bot, "mb"),
+                "BR": (right, bot, "rb"),
+            })
+
+        self.text_coords = coords
+
+    # Scrape relevant metadata from obj to render on rebates
+    def process_metadata(self):
+        # TL = cam/lns
+        # TC = index
+        # TR = stk
+        # BL = date
+        # BR = rating
+        
+        # Build metadata for each image
+        metadata = []
+
+
+        for img in self.roll.images:
+        # build camlens and handle cases where lens is missing
+            cam = img.cam
+            lns = img.lns if img.lns else "???"
+            camlns = cam + "/" + lns if cam and lns else cam
+            md = {
+                "TL": camlns,
+                "BC": str(img.index) if img.index else "???",
+                "TR": img.stk if img.stk else "???",
+                "BL": img.dateExposed.strftime("%y%m%d") if img.dateExposed else "???",
+                "BR": (str(img.rating) + 's') if img.rating else "???",
+            }
+            metadata.append(md)
+        
+        # print cam
+        img = self.roll.images[0]
+
+        print(img.cam, self.roll.cam)       
+        self.rebate_metadata = metadata
+
+        return
+
     def render_images(self):
-        frame_width = self.px(36)
-        frame_height = self.px(24)
-        vertical_offset = self.px(2.5)
+        # 1) create base image from rebate
+        base = self.get_base_rebate_image()
 
-        # Convert grid
-        grid = self.convert_grid(self.grid_centered, width=frame_width, height=frame_height)
+        # print base image size in mm using base.width and base.height in mm
+        print(f"Base rebate image size: {base.width * 25.4 / self.dpi:.1f} x {base.height * 25.4 / self.dpi:.1f} mm")
 
-        if self.debug:
-            print("DEBUG ON")
-            for i, (x, y) in enumerate(self.grid):
-                top_left_x, top_left_y = grid[i]
-                self.draw.rectangle(
-                    [top_left_x, top_left_y - vertical_offset,
-                    top_left_x + frame_width, top_left_y + frame_height - vertical_offset],
-                    outline=(255, 0, 0, 255),
-                    fill=(255, 0, 0, 64),
-                    width=2
-                )
-            return
+        # 2) parallel process each frame
+        n = min(self.framecount, len(self.grid), len(self.roll.images))
+        print(f"Rendering {n} frames in parallel...")
+        with ThreadPoolExecutor(max_workers=min(8, n)) as executor:
+            futures = [executor.submit(self.task, base.copy(), i) for i in range(n)]
+            results = [f.result() for f in futures]
+        
+        # 3) paste each result onto canvas at grid position
+        for i in range(self.framecount):
+            frame_img = results[i]
+            cx, cy = self.to_px(self.grid[i][0]), self.to_px(self.grid[i][1])
+            x0 = int(cx - frame_img.width / 2)
+            y0 = int(cy - frame_img.height / 2)
+            self.canvas.paste(frame_img, (x0, y0), frame_img)
 
-        # Helper function to process a single image
-        def load_and_prepare_image(i):
-            if i > self.frame_count - 1 or i > len(grid) - 1:
-                return None  # Skip invalid index
+    def get_base_rebate_image(self):
+        key = self.roll.filmformat
+        path = os.path.join(os.path.dirname(__file__), 'data', 'rebates', f'{key}.png')
+        if not os.path.exists(path):
+            print(f"Rebate image for format {key} not found at {path}. Skipping rebates.")
+            return None
+        rebate = Image.open(path).convert("RGBA")
 
-            image = self.roll.images[i]
-            path = image.filePath
-            exposure = image.index
-            try:
-                with Image.open(path) as img:
-                    print(f"[THREAD] Processing image {exposure}...")
-
-                    # Rotate if portrait
-                    if img.height > img.width:
-                        img = img.rotate(90, expand=True)
-
-                    # Resize
-                    img.thumbnail((frame_width, frame_height), Image.LANCZOS)
-
-                    # Convert for pasting
-                    img = img.convert("RGBA")
-
-                    # Convert center coordinate to top-left paste location
-                    converted_cell = self.convert_grid_cell(self.grid_centered[exposure-1], img.width, img.height)
-                    paste_x, paste_y = int(converted_cell[0]), int(converted_cell[1])
-
-                    return (img.copy(), paste_x, paste_y)  # copy to detach from context manager
-            except Exception as e:
-                print(f"[THREAD] Error loading image {exposure} ({path}): {e}")
-                return None
-
-        # Run all in parallel
-        print("Rendering images in parallel...")
-        with ThreadPoolExecutor() as executor:
-            results = list(executor.map(load_and_prepare_image, range(len(self.grid))))
-        print("Image processing complete")
-        # Paste all images back onto canvas
-        for result in results:
-            if result:
-                img, x, y = result
-                self.canvas.paste(img, (x, y), img)  # use img as mask for transparency
-
-
-
-
-
-
-
-    def build_metadata(self):
-        roll = self.roll
-        self.film_stock = roll.stock
-        self.film_stk = roll.stk
-        self.camera_model = roll.cameras[0]
-        self.date_start = roll.startDate
-        self.date_end = roll.endDate
-        self.duration = roll.duration
-        self.frame_count = roll.countExposures
-        self.photo_count = roll.countAll
-        self.roll_path = roll.directory
-        self.roll_index = roll.index
-        self.roll_title = roll.title
-        self.roll_format = roll.filmformat
+        return rebate
     
+    # define parallel subroutine
+    def task(self, rebate_base, i):
+        print(f"Processing frame {i+1}")
 
-    def build_header(self):
-        # Line 1: Large, contains index, title
-        idx = self.roll_index
-        tit = self.roll_title
+        # work on a fresh copy per frame
+        frame = rebate_base.copy()
 
-        # Line 2: Medium, date start, date end, stock, camera, frame count,
-        stk = self.film_stock
-        cam = self.camera_model
-        cnt = self.photo_count
+        bbox_h = int(self.film_size[1])         # mm
+        bbox_w = int(self.film_size[0]) * 2     # mm
 
-        # Line 3: file path
-        path = self.roll_path
-        t0 = self.date_start.date()
-        t1 = self.date_end
-        dt = self.duration
+        # 1) load exposure
+        path = self.roll.images[i].filePath
+        img = Image.open(path).convert("RGBA")
 
-        header_line_1 = f'#{idx}   {tit}'
-        header_line_2 = f'{stk}   {cam}   {cnt}exp'
-        header_line_3 = f'{t0} to {t1} ({dt})'
+        # 2) rotate if needed
+        if getattr(self.roll.images[i], "isVertical", False):
+            img = img.rotate(90, expand=True)
 
-        self.header.append(header_line_1)
-        self.header.append(header_line_2)
-        self.header.append(header_line_3)
+        # 3) fit to bounding box (no upscaling)
+        img.thumbnail((self.to_px(bbox_w), self.to_px(bbox_h)), Image.LANCZOS)
 
+        # 4) paste onto frame in centered position
+        px = (frame.width - img.width) // 2
+        py = (frame.height - img.height) // 2
+        frame.paste(img, (px, py), img)
 
+        # 5) overlay rebate ON TOP
+        frame.paste(rebate_base, (0, 0), rebate_base)
+
+        # 6) metadata (draw last)
+        if i < len(self.rebate_metadata) and i < len(self.text_coords):
+            md = self.rebate_metadata[i]
+            coords = self.text_coords[i]
+            draw_local = ImageDraw.Draw(frame)
+
+            # Make a per-thread font to avoid FreeType thread quirks
+            try:
+                local_font = ImageFont.truetype(self.font_path, self.font_size)
+            except Exception:
+                # fall back to shared font or default
+                local_font = getattr(self, "font", ImageFont.load_default())
+
+            # ensure non-transparent color
+            fc = self.fontColor
+            if isinstance(fc, tuple) and len(fc) == 3:
+                fc = (fc[0], fc[1], fc[2], 255)
+
+            for pos, text in md.items():
+                if not text or pos not in coords:
+                    continue
+                
+
+                # TODO: fix text placement and positioning. shows up on 120, not at all on 135. 1
+                # x, y, anchor = coords[pos]
+                x = self.to_px(coords[pos][0])
+                y = self.to_px(coords[pos][1])
+
+                x = coords[pos][0]
+                y = coords[pos][1]
+                anchor = coords[pos][2]
+
+                draw_local.text(
+                    (int(round(x)), int(round(y))),
+                    text,
+                    fill=fc,
+                    font=local_font,
+                    anchor=anchor
+                )
+
+        # 7) scale by k
+        scaled_w = max(1, int(round(frame.width * self.k)))
+        scaled_h = max(1, int(round(frame.height * self.k)))
+        frame = frame.resize((scaled_w, scaled_h), Image.LANCZOS)
+
+        return frame
 
     def render_header(self):
-        # run through line by line and draw each string in header at the top of the page
-        for i, string in enumerate(self.header):
-            size = self.header_font_size[i]
-            self.update_header(size)
-            color = (255, 255, 255, 255)  # #FCC278
-            font = self.header_font
-            pos_y = self.sheet_margins['top'] / 3 + i * size * 1.1
-            pos_x = self.sheet_margins['left'] + 10
-            self.draw.text((pos_x, pos_y), string, font=font, fill=color, anchor="lm")
-        
-        return self.canvas, self.draw
+        # Build header with the following information/placements:
+        # Top row (bold, larger):
+        #   Left: Title, Right: Roll Index
+        # Second row (smaller):
+        #   date range (start - end) | stock | camera
 
-    def update_header(self, size):
-        self.header_font = ImageFont.truetype("fonts/Impact Label Reversed.ttf", size=size)
-        
-    def render_image_metadata(self):
-        grid = self.grid
-        roll = self.roll
-        for i in range(self.frame_count):
-            img = roll.images[i]
-            cell = grid[i]
-            xl = cell[0] + 12
-            xm = cell[0] + round(self.rebate_header_coords[0] / 2)
-            xr = cell[0] + self.rebate_header_coords[0]
-            yt = cell[1]
-            yb = cell[1] + self.rebate_footer_coords[3]
+        # Config
+        font_size_large = self.to_px(8)   # in points
+        font_size_small = self.to_px(5)   # in points
+        font_path = self.roll.fontPath
+        font_color = (255, 255, 255, 255)  # white
 
-            idx = str(img.index)
-            # date in format YYMMDD
-            date = img.dateExposed.strftime('%y-%m-%d') if img.dateExposed else "??-??-??"
-            lens = str(round(img.focalLength)) if img.focalLength else ""
-            cam = str(img.cameraModel) + f"/{lens}"
-            stk = str(roll.stk)
-            rate = (str((img.rating)) if img.rating else "?") + "S"
-            font, text_color, emulsion = self.get_font(stk)
+        title = self.roll.title if self.roll.title else "78_23-09-23 R35S APX400 Seewlisee"
+        index = f'#{int(self.roll.index):03d}' if self.roll.index is not None else "???"
+        date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
+        date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
+        date_range = f"{date_start} - {date_end}"
+        stock = self.roll.stk if self.roll.stk else "???"
+        camera = self.roll.cameras if self.roll.cameras else "???"
+
+        # Fonts
+        font_large = ImageFont.truetype(font_path, font_size_large)
+        font_small = ImageFont.truetype(font_path, font_size_small)
+
+        # Draw context
+        img = self.canvas
+        draw = ImageDraw.Draw(img)
+
+        # Padding
+        padding_x = self.to_px(self.margin)
+        padding_y = self.to_px(self.margin)
+
+        # --- Top row ---
+        # Left: Title
+        draw.text(
+            (padding_x, padding_y),
+            title,
+            font=font_large,
+            fill=font_color,
+            anchor="la"   # left aligned
+        )
+
+        # Right: Roll Index
+        w, h = img.size
+        bbox_index = draw.textbbox((0, 0), index, font=font_large)
+        w_index = bbox_index[2] - bbox_index[0]
+        h_index = bbox_index[3] - bbox_index[1]
+
+        draw.text(
+            (w - padding_x, padding_y),
+            index,
+            font=font_large,
+            fill=font_color,
+            anchor="ra"   # right aligned
+        )
+
+        # Compute row height from tallest element in top row
+        bbox_title = draw.textbbox((0, 0), title, font=font_large)
+        h_title = bbox_title[3] - bbox_title[1]
+        row_height = max(h_index, h_title)
+
+        # --- Second row ---
+        second_row_y = padding_y + row_height + self.to_px(2)  # spacing between rows
+        row_text = f"{date_range} // {stock} // {camera}"
+
+        draw.text(
+            (padding_x, second_row_y),
+            row_text,
+            font=font_small,
+            fill=font_color,
+            anchor="la"
+        )
+
+        self.canvas = img
 
 
-            # print text onto image
-            self.draw.text((xm,yt), idx, font=font, fill=text_color, anchor="mt")
-            self.draw.text((xl, yt), cam, font=font, fill=text_color, anchor="lt")
-            self.draw.text((xr, yt), stk, font=font, fill=text_color, anchor="rt")
-            self.draw.text((xr, yb), rate, font=font, fill=text_color, anchor='rt')
-            self.draw.text((xl, yb), date, font=font, fill=text_color, anchor='lt')
+    def render_infopage(self):
+        """
+        Build a clean metadata table for each exposure on a fresh canvas.
+        Layout: two columns if needed, with headers and truncated cells to fit.
+        Uses modern Pillow sizing via draw.textbbox.
+        """
+        # --- Config ---
+        img_w, img_h = self.canvas.size
+        bg_color = (0, 0, 0, 255)
+        font_color = (255, 255, 255, 255)
+        grid_color = (255, 255, 255, 64)
 
-    def get_font(self, stk):
+        pad_x = self.margin
+        pad_y = self.margin
+        row_gap = self.to_px(0.6)  # gap between rows
+        col_gap = self.to_px(1.2)  # gap between the two table columns (left/right pages)
+        header_gap = self.to_px(0.8)
 
-        # Setup
-        fontSize = 40
-        defaultColor = (255, 255, 255, 255)  # WHITE
-        defaultFontPath = 'fonts/Impact Label Reversed.ttf'
-        roll = self.roll
+        font_size_header = self.to_px(4)
+        font_size_cell = self.to_px(3.5)
+        font_path = self.roll.fontPath
 
-        # Catch missing font/color cases
-        if roll.fontPath is None or roll.fontColor is None:
-            roll.fontPath = defaultFontPath
-            roll.fontColor = defaultColor
+        # Fonts
+        font_header = ImageFont.truetype(font_path, font_size_header)
+        font_cell = ImageFont.truetype(font_path, font_size_cell)
+        font_small = ImageFont.truetype(font_path, max(1, int(font_size_cell * 0.9)))
 
-        # Cast attributes and return
-        font = ImageFont.truetype(roll.fontPath, size=fontSize)
-        text_color = roll.fontColor
-        emulsion = [roll.isColor, roll.isBlackAndWhite, roll.isSlide]
+        # New canvas
+        from PIL import ImageDraw, ImageFont, Image
+        info_img = Image.new("RGBA", (img_w, img_h), bg_color)
+        draw = ImageDraw.Draw(info_img)
 
-        return font, text_color, emulsion
+        # Utilities
+        def text_size(s, font):
+            bbox = draw.textbbox((0, 0), str(s), font=font)
+            return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-if __name__ == "__main__":
-    main()
+        def fit_text(s, font, max_w):
+            s = "" if s is None else str(s)
+            if not s:
+                return s
+            w, _ = text_size(s, font)
+            if w <= max_w:
+                return s
+            # binary-like trim with ellipsis
+            ell = "…"
+            left, right = 0, len(s)
+            best = ""
+            while left <= right:
+                mid = (left + right) // 2
+                cand = s[:mid] + ell
+                w_cand, _ = text_size(cand, font)
+                if w_cand <= max_w:
+                    best = cand
+                    left = mid + 1
+                else:
+                    right = mid - 1
+            return best
+
+        def yn(v):
+            if v is None:
+                return "—"
+            return "Y" if bool(v) else "N"
+
+        def safe_date(d):
+            return d.strftime("%y.%m.%d") if d else "———"
+
+        # Columns: (header, width_fraction_of_table)
+        # Table width = (img_w - 2*pad_x - col_gap) / 2 for each side
+        # Fractions roughly tuned; notes gets the remainder.
+        col_defs = [
+            ("#", 0.08),
+            ("Date", 0.16),
+            ("Cam/Lens", 0.24),
+            ("Stock", 0.16),
+            ("ISO", 0.08),
+            ("f", 0.08),
+            ("t", 0.12),
+            ("★", 0.08),
+            # Notes is implicit remainder in rendering step
+        ]
+
+        # Compute per-side table geometry
+        side_w = (img_w - 2 * pad_x - col_gap) // 2
+        # Derive absolute widths and leave remainder for Notes
+        abs_widths = []
+        taken = 0
+        for i, (_, frac) in enumerate(col_defs):
+            w_abs = int(side_w * frac)
+            abs_widths.append(w_abs)
+            taken += w_abs
+        notes_w = side_w - taken
+        abs_widths.append(notes_w)
+        headers = [h for h, _ in col_defs] + ["Notes"]
+
+        # Row height from font metrics
+        _, header_h = text_size("Hg", font_header)
+        _, cell_h = text_size("Hg", font_cell)
+        row_h = cell_h + row_gap
+
+        # Top labels
+        title = self.roll.title if getattr(self.roll, "title", None) else "Info"
+        title_w, _ = text_size(title, font_header)
+        draw.text((pad_x, pad_y), title, font=font_header, fill=font_color, anchor="la")
+
+        subtitle = f"Roll {('#' + str(int(self.roll.index)):03s).replace('#0', '#00') if getattr(self.roll, 'index', None) is not None else '???'} | {safe_date(getattr(self.roll, 'startDate', None))} – {safe_date(getattr(self.roll, 'endDate', None))}"
+        sub_y = pad_y + header_h + self.to_px(0.5)
+        draw.text((pad_x, sub_y), subtitle, font=font_small, fill=font_color, anchor="la")
+
+        # First table top-left corner (left page)
+        table_top = sub_y + header_gap + cell_h
+        table_lefts = [pad_x, pad_x + side_w + col_gap]  # left and right tables
+
+        # Header row draw function
+        def draw_header(x0, y0):
+            x = x0
+            for i, head in enumerate(headers):
+                w_col = abs_widths[i]
+                text = fit_text(head, font_small, max(1, w_col))
+                draw.text((x, y0), text, font=font_small, fill=font_color, anchor="la")
+                x += w_col
+            # underline
+            y_line = y0 + cell_h + self.to_px(0.2)
+            draw.line((x0, y_line, x0 + side_w, y_line), fill=grid_color, width=1)
+
+        # How many rows fit per side?
+        usable_h = img_h - table_top - pad_y
+        rows_per_side = max(1, int(usable_h // row_h) - 1)  # minus header row
+
+        # Build rows from self.roll.images
+        rows = []
+        for img in getattr(self.roll, "images", []):
+            idx = f"{(img.index if img.index is not None else 0):02d}"
+            date_s = safe_date(getattr(img, "dateExposed", None))
+            cam = getattr(img, "cam", None) or getattr(img, "camera", None) or "?"
+            lns = getattr(img, "lns", None) or getattr(img, "lens", None) or "?"
+            cam_lns = f"{cam}/{lns}"
+            stk = getattr(img, "stk", None) or getattr(img, "stock", None) or "?"
+            iso = getattr(img, "iso", None) or getattr(img, "boxspeed", None) or "?"
+            fnum = getattr(img, "fNumber", None)
+            f_disp = f"f/{fnum:g}" if isinstance(fnum, (int, float)) else (f"{fnum}" if fnum else "—")
+            sh = getattr(img, "shutterSpeed", None) or getattr(img, "exposureTime", None)
+            if isinstance(sh, (int, float)) and sh > 0:
+                # display as 1/x if <1
+                sh_disp = f"1/{int(round(1/sh))}" if sh < 1 else f"{int(round(sh))}s"
+            else:
+                sh_disp = sh if sh else "—"
+            rating = getattr(img, "rating", None)
+            rating_disp = "—" if rating in (None, "", 0) else str(rating)
+            notes = getattr(img, "notes", None) or ""
+
+            rows.append([idx, date_s, cam_lns, stk, iso, f_disp, sh_disp, rating_disp, notes])
+
+        # Draw tables (left then right) with pagination over rows
+        row_index = 0
+        for side in range(2):
+            x0 = table_lefts[side]
+            y0 = table_top
+            # Header
+            draw_header(x0, y0)
+            y = y0 + row_h
+            for _ in range(rows_per_side):
+                if row_index >= len(rows):
+                    break
+                x = x0
+                row = rows[row_index]
+                for i, cell in enumerate(row):
+                    w_col = abs_widths[i]
+                    cell_txt = fit_text("" if cell is None else str(cell), font_cell, max(1, w_col))
+                    draw.text((x, y), cell_txt, font=font_cell, fill=font_color, anchor="la")
+                    x += w_col
+                # optional row separators
+                draw.line((x0, y + cell_h + self.to_px(0.15), x0 + side_w, y + cell_h + self.to_px(0.15)),
+                        fill=grid_color, width=1)
+                y += row_h
+                row_index += 1
+
+        # If we have more rows than fit in two sides, indicate overflow
+        if row_index < len(rows):
+            overflow_note = f"+{len(rows) - row_index} more…"
+            note_w, _ = text_size(overflow_note, font_small)
+            draw.text((img_w - pad_x - note_w, img_h - pad_y - cell_h),
+                    overflow_note, font=font_small, fill=font_color, anchor="la")
+
+        # Replace current canvas with info page
+        self.canvas_2 = info_img
+
+        # Show canvas
+        self.canvas_2.show()
+
+
+FORMATS = {
+    # 35mm / 135 film
+    "half": {            # 18×24 mm on 135
+        "filmformat": "135",
+        "film_w": 24.0 * 1.0857142857,          # frame pitch for half-frame not standardized in still; leaving blank
+        "film_h": 35.0,          # nominal film width
+        "frame_w": 24.0,
+        "frame_h": 18.0,
+    },
+    "35mm": {            # 24×36 mm on 135
+        "filmformat": "135",
+        "film_w": 38.00,         # 8 perforations @ 4.75 mm incl. 2 mm gap
+        "film_h": 35.0,          # nominal film width
+        "frame_w": 36.0,
+        "frame_h": 24.0,
+    },
+    "panoramic": {       # XPan-style on 135
+        "filmformat": "135",
+        "film_w": 65.0 + 4.0,          # per-frame advance varies by body
+        "film_h": 35.0,
+        "frame_w": 65.0,         # Hasselblad XPan spec
+        "frame_h": 24.0,
+    },
+
+    # 120 roll film (actual frame areas per ISO 732 table)
+    "645": {
+        "filmformat": "120",
+        "film_w": None,          # spacing varies by back/camera
+        "film_h": 61.0,          # modern films ≈61 mm wide
+        "frame_w": 56.0,
+        "frame_h": 41.5,
+    },
+    "6x4.5": {           # alias of 645
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 41.5,
+    },
+    "6x6": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 56.0,
+    },
+    "6x7": {
+        "filmformat": "120",
+        "film_w": 74.0,
+        "film_h": 61.0,
+        "frame_h": 56.0,
+        "frame_w": 70.0,
+    },
+    "6x8": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 77.0,
+    },
+    "6x9": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 84.0,
+    },
+    "6x12": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 118.0,
+    },
+    "6x17": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 168.0,
+    },
+    "6x24": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 224.0,
+    },
+
+    # Large format sheet film (sheet size nominal; image area often smaller)
+    "4x5": {
+        "filmformat": "sheet",
+        "film_w": 127.0,         # sheet width
+        "film_h": 102.0,         # sheet height
+        "frame_w": 120.0,        # typical image area
+        "frame_h": 95.0,
+    },
+    "5x7": {
+        "filmformat": "sheet",
+        "film_w": 178.0,
+        "film_h": 127.0,
+        "frame_w": None,         # varies by holder/mask
+        "frame_h": None,
+    },
+    "8x10": {
+        "filmformat": "sheet",
+        "film_w": 254.0,
+        "film_h": 203.0,
+        "frame_w": None,         # image area depends on holder; leaving blank
+        "frame_h": None,
+    },
+    "11x14": {
+        "filmformat": "sheet",
+        "film_w": 356.0,
+        "film_h": 279.0,
+        "frame_w": None,
+        "frame_h": None,
+    },
+
+    # catch-all
+    "custom": {
+        "filmformat": None,
+        "film_w": None,
+        "film_h": None,
+        "frame_w": None,
+        "frame_h": None,
+    },
+}
