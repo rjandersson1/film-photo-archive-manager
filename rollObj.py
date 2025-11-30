@@ -15,8 +15,8 @@ import subprocess
 from typing import Iterable, Union
 from exposureObj import exposureObj
 
-DEBUG = True
-WARNING = True
+DEBUG = False
+WARNING = False
 ERROR = True
 
 
@@ -350,24 +350,33 @@ class rollObj:
                         master.copyCount = 0
                         master.original = master
                     continue
-                
 
-                        
+
                 self.containsCopies = True
-                # Sort by dateCreated, oldest is master
-                group.sort(key=lambda x: x.dateCreated)
 
-                # Define master obj
-                master = group[0]
+                # Prefer non-stitched / non-grayscale, then newest dateCreated
+                master = max(
+                    group,
+                    key=lambda x: (
+                        0 if (x.isStitched or x.isGrayscale) else 1,  # base (1) > derived (0)
+                        x.dateCreated
+                    )
+                )
+
+                copies = [img for img in group if img is not master]
+
+
+                oldest_index = min(img.index for img in group)
+                master.index = oldest_index
+
+
                 master.isOriginal = True
                 master.containsCopies = True
                 master.isCopy = False
 
-                # Nest copies into the obj as a vector of objs
-                master.copies = group[1:]
-                master.copyCount = len(master.copies)
+                master.copies = copies
+                master.copyCount = len(copies)
 
-                # Update copy attributes
                 for copy in master.copies:
                     copy.isOriginal = False
                     copy.containsCopies = False
@@ -417,7 +426,7 @@ class rollObj:
     def update_metadata(self):
         self.update_filmformat()
         self.update_stock_metadata()
-    
+
     # Update stock-related attributes using first image STK to identify stock among collection stock list.
     def update_stock_metadata(self):
         # Grab film stock from first frame and cast it to all exposures
@@ -521,10 +530,7 @@ class rollObj:
                     print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}')
                 break
 
-        
-        
 
-    
     def update_filmformat(self):
         # Pick first camera (assumes all images on roll are from same camera)
         cameraBrand = self.images[0].cameraBrand
