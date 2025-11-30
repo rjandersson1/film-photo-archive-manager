@@ -559,7 +559,11 @@ class Renderer:
         title_w, _ = text_size(title, font_header)
         draw.text((pad_x, pad_y), title, font=font_header, fill=font_color, anchor="la")
 
-        subtitle = f"Roll {('#' + str(int(self.roll.index)):03s).replace('#0', '#00') if getattr(self.roll, 'index', None) is not None else '???'} | {safe_date(getattr(self.roll, 'startDate', None))} – {safe_date(getattr(self.roll, 'endDate', None))}"
+        subtitle = (
+            f"Roll {(('#' + str(int(self.roll.index))).replace('#0', '#00')):03s} | "
+            f"{safe_date(getattr(self.roll, 'startDate', None))} – "
+            f"{safe_date(getattr(self.roll, 'endDate', None))}"
+        )
         sub_y = pad_y + header_h + self.to_px(0.5)
         draw.text((pad_x, sub_y), subtitle, font=font_small, fill=font_color, anchor="la")
 
