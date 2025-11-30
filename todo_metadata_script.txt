@@ -79,3 +79,45 @@ long term:
 
 - fix stocklist key mismatches
 - fix importer to handle older rolls & also select which rolls to import...
+
+
+30 Nov 2025
+
+- build roll-by-roll copy-paster inside import import importtool 
+	- find roll
+	- confirm index
+	- find raw
+	- find jpeg
+
+
+how I see the approach:
+
+1) select rolls to work with
+2) import those rolls
+3) do the task
+
+tasks I see needing to be developed:
+
+1) copy and rebuild each roll (raw, jpeg) 
+	this method will be the one to clean every thing up inside my library and make everything consistent
+2) filter-copy selected rolls to desired folder (jpeg) (eg. photos w rating > 4)
+3) import / de-import photos to/from locations (with logging)
+
+
+
+ok so then I will develop as follows:
+
+methods:
+
+	
+	import_roll(path)
+		begins import routine, indexing each photo and handling metadata
+	
+	photo_get_new_filename(photo)
+		returns filename photo according to naming convention defined in a file somewhere
+			eg
+			[YYMMDD]_[index]_[stk]_[cam]_[lns]_[location]_[rating]
+		NOTE: how to deal with copies/panoramas? change the index or add a flag to the filename?
+
+	
+			
