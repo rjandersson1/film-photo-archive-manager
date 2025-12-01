@@ -469,6 +469,21 @@ class rollObj:
             if image.cam not in self.cameras:
                 self.cameras.append(image.cam)
             
+            # handle copies
+            for copy in image.copies:
+                copy.stock = self.stock
+                copy.boxspeed = self.boxspeed
+                copy.stk = self.stk
+                copy.cam = self.cam
+                copy.process = self.process
+                copy.isColor = self.isColor
+                copy.isBlackAndWhite = self.isBlackAndWhite
+                copy.isInfrared = self.isInfrared
+                copy.isNegative = self.isNegative
+                copy.isSlide = self.isSlide
+                if copy.cam not in self.cameras:
+                    self.cameras.append(copy.cam)
+            
         if len(self.cameras) > 1:
             # print warning saying multiple cameras for one roll
             if WARNING:
@@ -568,6 +583,9 @@ class rollObj:
         for image in self.images:
             image.filmtype = self.filmtype
             image.filmformat = self.filmformat
+            for copy in image.copies:
+                copy.filmtype = self.filmtype
+                copy.filmformat = self.filmformat
 
 
 
