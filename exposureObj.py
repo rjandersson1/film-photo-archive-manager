@@ -35,6 +35,7 @@ class exposureObj:
 
         # Exposure attributes
         self.index = None           # Exposure index, from filename (dependant on duplicates... TODO)
+        self.index_str = None               # Exposure index, string, zfill(2) eg [04]
         self.index_original = None
         self.location = None                # Location, EXIF
         self.state = None                   # State, EXIF
