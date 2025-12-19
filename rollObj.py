@@ -67,6 +67,7 @@ class rollObj:
         self.endDate = None                         # Roll end date, cast from last exposure
         self.duration = None                        # Roll duration, derived
         self.index = None                           # Roll index, derived from folder name
+        self.index_str = None                       # Roll index string, zfill(3) eg 003
         self.title = None                           # Title for the roll, derived from folder name
         self.containsCopies = None                  # Does roll contain images that are copies of a master? Derived from copy check
         self.cameras = []                         # List of cameras used in the roll, derived
@@ -98,6 +99,7 @@ class rollObj:
         # Grab index from name eg. "72_23-09-07 F3 P400 Flims and JPY" --> 72
         index = int(name.split("_")[0])
         self.index = index
+        self.index_str = str(self.index).zfill(3)
 
         # Identify jpg/raw dirs
         jpgDirs = []
@@ -134,7 +136,7 @@ class rollObj:
                 )
                 if conditions_ignore: continue
                 if WARNING and os.path.isdir(os.path.join(path,file)):
-                    print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} additional subfolders in image directory:\n\t\t"{file}" in {path}')
+                    print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} additional subfolders in image directory:\n\t\t"{file}" in {path}')
 
                 conditions = (
                     file.lower().endswith('.jpg') or
@@ -160,21 +162,21 @@ class rollObj:
         # Print warnings if no jpg/raw files found
         if jpgDirs == []:
             if ERROR:
-                print(f'[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"} JPG missing')
+                print(f'[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"} JPG missing')
                 self.images = []
                 return
         if rawDirs == []:
             if WARNING:
-                print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} RAW missing')
+                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} RAW missing')
                 rawDirs.append(-1)
 
         # Print warnings if multiple jpg/raw dirs identified
         if len(jpgDirs) > 1:
             if WARNING:
-                print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} {len(jpgDirs)} JPG dirs found!')            
+                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} {len(jpgDirs)} JPG dirs found!')            
         if len(rawDirs) > 1:
             if WARNING:
-                print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} {len(rawDirs)} RAW dirs found!')
+                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} {len(rawDirs)} RAW dirs found!')
 
         # Update attributes
         if len(jpgDirs): self.jpgDirs = jpgDirs 
@@ -194,7 +196,7 @@ class rollObj:
         
         if not self.jpgDirs:
             if DEBUG:
-                print(f'[{self.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} No JPG directories found for roll:\n\t\t{self.name}')
+                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} No JPG directories found for roll:\n\t\t{self.name}')
             return
 
         for dir_path in self.jpgDirs:
@@ -203,13 +205,13 @@ class rollObj:
             # Skip directories with '5mb' or '5mp' in the name
             if '5mb' in dir_name or '5mp' in dir_name:
                 if DEBUG:
-                    print(f'[{self.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} Skipping directory with "5mb"/"5mp" in name:\n\t\t{dir_path}')
+                    print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Skipping directory with "5mb"/"5mp" in name:\n\t\t{dir_path}')
                 continue
 
             # Warn if directory name does not include 'jpg' or 'jpeg'
             if 'jpg' not in dir_name and 'jpeg' not in dir_name and 'new' not in dir_name:
                 if WARNING:
-                    print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} Folder name might not indicate valid JPG content:\n\t\t{dir_path}')
+                    print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} Folder name might not indicate valid JPG content:\n\t\t{dir_path}')
                 continue
 
             # Process valid image files
@@ -221,6 +223,7 @@ class rollObj:
         
         # Update image list attribute
         self.images = images
+        self.reindex_images()
 
     # 4) Bulk process EXIF data for all images. Overflow to process a single exif if requested
         # exif process approach:
@@ -231,7 +234,7 @@ class rollObj:
     def process_exif(self, image=None):
         if not self.images:
             if DEBUG:
-                print(f'[{self.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} No image obj to process EXIF data for roll:\n\t\t{self.name}')
+                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} No image obj to process EXIF data for roll:\n\t\t{self.name}')
             return
         
         pathsToFetch = []
@@ -248,7 +251,7 @@ class rollObj:
             # Grab exif
             pathsToFetch.append(path)
             if DEBUG:
-                print(f'[{self.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} Fetching EXIF...')
+                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Fetching EXIF...')
             exif = self.fetch_exif(pathsToFetch)[0]
 
             # cast to back to image
@@ -272,7 +275,7 @@ class rollObj:
             
             # Fetch exifs.
             if DEBUG:
-                print(f'[{self.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} Fetching EXIF...')
+                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Fetching EXIF...')
             data = self.fetch_exif(pathsToFetch)
             # Print success
             if data is not None:
@@ -293,7 +296,7 @@ class rollObj:
                 # Assert path match
                 if p != path:
                     if ERROR:
-                        print(f'[{self.index}] [{image.index}]\\ERROR: Img path does not match exif source path:\n\t\tImage: {path}\n\t\tExif: {p}')
+                        print(f'[{self.index_str}] [{image.index_str}]\\ERROR: Img path does not match exif source path:\n\t\tImage: {path}\n\t\tExif: {p}')
                     continue
                 
                 # cast exif to image
@@ -310,14 +313,15 @@ class rollObj:
                 index_counts = Counter(indices)
                 duplicates = {idx: count for idx, count in index_counts.items() if count > 1}
                 
-                print(f"[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"} Duplicate exposure indices found in roll '{self.name}'")
+                print(f"[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"} Duplicate exposure indices found in roll '{self.name}'")
                 if DEBUG:
                     for img in self.images:
                         if img.index in duplicates:
-                            print(f"\t\t[{img.index}] {img.name}")
+                            print(f"\t\t[{img.index_str}] {img.name}")
 
         # Sort images by index
         self.images.sort(key=lambda img: img.index)
+        self.reindex_images()
 
     # 6) Handle copies
         # Check through images to see if any have identical image.dateExposed.
@@ -340,12 +344,12 @@ class rollObj:
 
             if len(group) > 1:
                 if DEBUG:
-                    print(f'[{group[0].roll.index}]\t{"\033[33m"}DEBUG:{"\033[0m"} copy found between:')
+                    print(f'[{group[0].roll.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} copy found between:')
                     for image in group:
-                        print(f'\t\t[{image.index}] {image.dateExposed}: {image.name}')
+                        print(f'\t\t[{image.index_str}] {image.dateExposed}: {image.name}')
 
                 if group[0].roll.index == 12:
-                    print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 12...')
+                    print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 12...')
                     for image in group:
                         master = image
                         
@@ -358,7 +362,7 @@ class rollObj:
                     continue
 
                 if group[0].roll.index == 6:
-                    print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 6...')
+                    print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 6...')
                     for image in group:
                         master = image
                         
@@ -480,7 +484,7 @@ class rollObj:
                 self.fontColor = tuple(map(int, stock['color'].split(','))) # '252, 194, 180, 255' --> tuple(rgba)
                 stkFound = True
         if WARNING and not stkFound:
-            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}"')
+            print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}"')
 
 
         # Cast metadata back to all images (if no STK found, casts None and throws warning)
@@ -516,7 +520,7 @@ class rollObj:
         if len(self.cameras) > 1:
             # print warning saying multiple cameras for one roll
             if WARNING:
-                print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} multiple cameras found in roll: {self.cameras}')
+                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} multiple cameras found in roll: {self.cameras}')
 
             
             
@@ -571,7 +575,7 @@ class rollObj:
             if self.images[i].dateExposed < self.images[i-1].dateExposed:
                 # date_increasing = False
                 if WARNING:
-                    print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}:\n\t\t[{self.images[i-1].index}] {self.images[i-1].dateExposed} > [{self.images[i].index}] {self.images[i].dateExposed}')
+                    print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}:\n\t\t[{self.images[i-1].index_str}] {self.images[i-1].dateExposed} > [{self.images[i].index_str}] {self.images[i].dateExposed}')
                 break
 
 
@@ -605,7 +609,7 @@ class rollObj:
                     break
 
         if WARNING and not camfound:
-            print(f'\n[{self.index}]\t\033[31mWARNING:\033[0m '
+            print(f'\n[{self.index_str}]\t\033[31mWARNING:\033[0m '
                 f'cam not in cameralist:\n\t\t"brand:{cameraBrand} model:{cameraModel}"')
 
         # Push attributes to all images
@@ -636,7 +640,12 @@ class rollObj:
 
         return selected
 
+    def reindex_images(self):
 
+        for img in self.images:
+            for copy in img.copies:
+                copy.index_str = str(copy.index).zfill(2)
+            img.index_str = str(img.index).zfill(2)
 
 
 
@@ -671,11 +680,11 @@ class rollObj:
                 if file.lower().endswith(key.lower()):
                     return True
             if WARNING:
-                print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} did not find key in directory:\n\t\t"{key}" in {dir}') # NOTE: potentially spammy
+                print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} did not find key in directory:\n\t\t"{key}" in {dir}') # NOTE: potentially spammy
             return False
         except Exception:
             if ERROR:
-                print(f'[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"}: dir invalid:\n\t\t{dir}')
+                print(f'[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"}: dir invalid:\n\t\t{dir}')
             return False
         
     # Returns requested exposure object
@@ -710,7 +719,7 @@ class rollObj:
             return data if data else None
         else:
             if ERROR:
-                print(f'[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"}: Failed to open exiftool!\n')
+                print(f'[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"}: Failed to open exiftool!\n')
             return None
         
     # run through locations on roll and choose 1-2 major ones to assign to roll
@@ -750,7 +759,7 @@ class rollObj:
             raw_name_counts = Counter(raw_names)
             for name, count in raw_name_counts.items():
                 if count > 1:
-                    db.e(f'[{self.index}]', f'Multiple RAW files under {name}')
+                    db.e(f'[{self.index_str}]', f'Multiple RAW files under {name}')
 
 
 
@@ -772,7 +781,7 @@ class rollObj:
             if imgRawName in unmatched_raws:
                 unmatched_raws.discard(imgRawName)
             else:
-                db.w(f'[{self.index}][{img.index}]', f'No matching RAW file for image:', imgRawName)
+                db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', imgRawName)
 
             for copy in img.copies:
                 copy_rawName = copy.rawFileName
@@ -789,11 +798,11 @@ class rollObj:
                             copy.rawFileName = new_raw_name
                             copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
                             unmatched_raws.discard(new_raw_name)
-                            db.w(f'[{self.index}][{img.index}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
+                            db.w(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
                         else:
-                            db.w(f'[{self.index}][{img.index}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
+                            db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
                     else:
-                        db.w(f'[{self.index}][{img.index}]', f'No matching RAW file for image:', f'{copy_rawName}')
+                        db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'{copy_rawName}')
 
                     
 
@@ -807,4 +816,4 @@ class rollObj:
                     if os.path.exists(rawPath):
                         self.unmatched_raws.append(rawPath)
 
-            db.w(f'[{self.index}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
+            db.w(f'[{self.index_str}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
