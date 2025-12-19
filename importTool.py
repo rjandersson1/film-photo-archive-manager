@@ -24,7 +24,7 @@ class importTool:
     def get_photo_name(self, img):
         # Define new file naming convention
         #[roll index]_[YYMMDD]_[index]_[stk]_[location]_[cam]_[lns]_[rating]
-        roll_index = img.roll.index
+        roll_index = str(img.roll.index).zfill(3)
         date = img.dateExposed
         index = img.index
         stk = img.stk
@@ -64,7 +64,7 @@ class importTool:
         dest_path = os.path.join(dest_folder, img.rawFileName)
 
         if src_path is None:
-            db.e(f'[{img.roll.index}][{img.index}]', 'No RAW file path found for image. Cannot copy RAW.')
+            db.e(f'[{img.roll.index}][{img.index_str}]', 'No RAW file path found for image. Cannot copy RAW.')
             return
 
 
@@ -72,9 +72,9 @@ class importTool:
             os.makedirs(os.path.dirname(dest_path))
         try:
             shutil.copy2(src_path, dest_path)
-            db.d(f'[{img.roll.index}][{img.index}]', f'Copied RAW')
+            # db.d(f'[{img.roll.index}][{img.index_str}]', f'Copied RAW')
         except Exception as e:
-            db.e(f'[{img.roll.index}][{img.index}]', f'Error copying RAW: {e}')
+            db.e(f'[{img.roll.index}][{img.index_str}]', f'Error copying RAW: {e}')
 
         for copy in img.copies:
             self.copy_raw(copy, dest_folder)
@@ -113,7 +113,7 @@ class importTool:
         try:
             # copy jpg
             shutil.copy2(src_path, dest_path)
-            db.d(f'[{img.roll.index}][{img.index}]', f'Copied JPG')
+            # db.d(f'[{img.roll.index}][{img.index_str}]', f'Copied JPG')
         except Exception as e:
             print(f'Error copying JPG for image {img.name}: {e}')
 
@@ -131,7 +131,7 @@ class importTool:
         try:
             # copy preview
             self.generate_preview(img, dest_path)
-            db.d(f'[{img.roll.index}][{img.index}]', f'Copied preview')
+            # db.d(f'[{img.roll.index}][{img.index_str}]', f'Copied preview')
         except Exception as e:
             print(f'Error copying preview for image {img.name}: {e}')
 
@@ -230,12 +230,12 @@ class importTool:
 
     # Cleans up a roll by copying jpg and raw files to correct folder within library
     def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1]):
-        if DEBUG:
-            t1 = time()
+        t1 = time()
+
+        db.i(f'[{roll.index_str}]', 'Cleaning roll...')
 
         if library_path is None:
             library_path = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography'
-            print(f"No library path provided. Defaulting to debug path:\n{library_path}")
         
 
         # Determine index and date of roll
@@ -247,7 +247,7 @@ class importTool:
             # film
                 # library
                     # YYYY
-                        # XX_YY-Mo-Mo_[STK]_[CAM]_[LOCATION(S)]
+                        # XXX_YY-Mo-Mo_[STK]_[CAM]_[LOCATION(S)]
                         #     01_scans
                         #     02_exports
                         #     03_previews
@@ -259,7 +259,11 @@ class importTool:
         locations_str  = '+'.join(roll.locations) if roll.locations else 'Unknown'
 
         # Define roll folder
-        roll_folder_name = f"{roll.index}_{date.strftime('%y')}-{date.strftime('%m')}-{roll.endDate.strftime('%m')}_{roll.stk}_{roll.cam}_{locations_str}"
+        # prefix zeros on index so [001-999]
+        index = roll.index_str
+
+
+        roll_folder_name = f"{index}_{date.strftime('%y')}-{date.strftime('%m')}-{roll.endDate.strftime('%m')}_{roll.stk}_{roll.cam}_{locations_str}"
         roll_base_path = os.path.join(library_path, 'film', 'library', date.strftime('%Y'), roll_folder_name)
 
         # Build subdirectories
@@ -270,33 +274,76 @@ class importTool:
         other_path = os.path.join(roll_base_path, '05_other')
         unmatchedRAW_path = os.path.join(other_path, '01_unmatched_raws')
 
+        # init progress bar
+        total_length = len(roll.images) * mode[0] + len(roll.images) * mode[1] + len(roll.images) * mode[2] + roll.countCopies * mode[3]
+        progress_index = 0
+        
         # Copy to directories
         for img in roll.images:
+
             # Copy raw if exists to scans
             if mode[0]:
+                progress_index += 1
+                db.progress(
+                    pre=f"[{index}]",
+                    current=progress_index,
+                    total=total_length,
+                    post=f"[{img.index_str}] Copying jpg...",
+                    mode="info"
+                )
                 self.copy_raw(img, scans_path)
 
             # Copy main image jpg to exports
             if mode[1]:
+                progress_index += 1
+                db.progress(
+                    pre=f"[{index}]",
+                    current=progress_index,
+                    total=total_length,
+                    post=f"[{img.index_str}] Copying RAW...",
+                    mode="info"
+                )
                 self.copy_jpg(img, exports_path)
             
             # Copy previews if exists to previews
             if mode[2]:
+                progress_index += 1
+                db.progress(
+                    pre=f"[{index}]",
+                    current=progress_index,
+                    total=total_length,
+                    post=f"[{img.index_str}] Copying preview...",
+                    mode="info"
+                )
                 self.copy_preview(img, previews_path)
 
             # Copy edits / virtual copies to edits
             if mode[3]:
                 for copy in img.copies:
+                    progress_index += 1
+                    db.progress(
+                        pre=f"[{index}]",
+                        current=progress_index,
+                        total=total_length,
+                        post=f"[{img.index_str}] Copying copies...",
+                        mode="info"
+                    )
                     self.copy_jpg(copy, edits_path)
                     self.copy_preview(copy, previews_path)
-        
+            
+
+        # copy over leftover raw files just in case
         if mode[0]:
             self.copy_unmatched_raws(roll, unmatchedRAW_path)
 
-        if DEBUG:
-            t2 = time()
-            db.d(f'[{roll.index}]', f'Cleaned roll in {t2 - t1:.2f} seconds.')
-        return
+        t2 = time()
+        db.progress(
+            pre=f"[{index}]",
+            current=total_length,
+            total=total_length,
+            post=f"[{img.index_str}] Finished archiving!",
+            mode="success"
+        )
 
         
 
