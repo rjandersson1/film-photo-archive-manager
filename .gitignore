@@ -707,3 +707,8 @@ data/filmCollectionTest/2023/74_23-09-09 F3 FP4 JPY/DSC01736.ARW
 data/filmCollectionTest/2023/74_23-09-09 F3 FP4 JPY/DSC01735.ARW
 data/filmCollectionTest/2023/74_23-09-09 F3 FP4 JPY/DSC01734.ARW
 data/filmCollectionTest/2023/74_23-09-09 F3 FP4 JPY/DSC01733.ARW
+*.pyc
+__pycache__/FilmCollection.cpython-311.pyc
+__pycache__/FilmCollectionDef.cpython-311.pyc
+__pycache__/RollMetadata.cpython-311.pyc
+__pycache__/RollMetadataDef.cpython-311.pyc
