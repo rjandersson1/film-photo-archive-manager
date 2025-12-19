@@ -197,6 +197,8 @@ class exposureObj:
         self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
         self.stk        = self._get_exif(("XMP-iptcCore", "Scene"))
         self.rating     = self._get_exif(("XMP-xmp", "Rating"), conv=int)
+        if self.rating is None:
+            self.rating = 0
         self.iso        = self._get_exif(("ExifIFD", "ISO"), conv=int)
         self.state      = self._get_exif(("IPTC", "Province-State"))
         self.fNumber    = self._get_exif(("ExifIFD", "FNumber"), conv=float)
@@ -223,13 +225,13 @@ class exposureObj:
 
         self.lensBrand   = self._get_exif(("ExifIFD", "LensMake"))
         self.lensModel   = self._get_exif(("ExifIFD", "LensModel"))
-        self.lens        = f"{self.lensBrand}f{self.lensModel}" if self.lensBrand and self.lensModel else None
-        self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0] if self.lensModel and '/' in self.lensModel else None
+        self.lens        = f"{self.lensBrand}f{self.lensModel}" if self.lensBrand and self.lensModel else ''
+        self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0] if self.lensModel and '/' in self.lensModel else ''
 
         # todo: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
         self.focalLength = self._get_exif(("ExifIFD", "FocalLength"),
                                         conv=lambda v: float(v.split(" ")[0]) if v else None)
-        self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if self.focalLength and self.maxAperture else None
+        self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if self.focalLength and self.maxAperture else ''
 
         # Image data
         self.width  = self._get_exif(("File", "ImageWidth"), conv=int)
@@ -242,6 +244,11 @@ class exposureObj:
         self.isStitched  = self._get_exif(("XMP-aux", "IsMergedPanorama"),
                                         conv=bool,
                                         default=False)
+        
+
+        # Hard code workaround for roll 29 (exif scene name issue)
+        if self.stk == 'Gold 200 OM Accura':
+            self.stk = 'Gold 200'
 
         # Update derived attributes
         self._update_derived_attributes()
