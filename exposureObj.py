@@ -14,9 +14,9 @@ import shutil
 import subprocess
 from typing import Iterable, Union
 
-DEBUG = True
+DEBUG = False
 ERROR = True
-WARNING = True
+WARNING = False
 
 class exposureObj:
     def __init__(self, roll, path):
@@ -30,6 +30,7 @@ class exposureObj:
         self.fileSize = os.path.getsize(self.filePath)
         self.rawFileName = None     # Raw file name, EXIF
         self.rawFilePath = None       # Raw file path, derived TODO: grab from self.roll.rawPaths and search for matching filenames
+        self.previewFilePath = None   # Preview file path, derived TODO
         self.attributesFile = {}
 
         # Exposure attributes
@@ -146,7 +147,6 @@ class exposureObj:
             except Exception:
                 if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [3] Could not get exposure index from:\n\t\t{name}')
                 self.index= None
-
         else:
             if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [E] Could not get exposure index from:\n\t\t{name}')
             self.index= None
@@ -344,7 +344,6 @@ class exposureObj:
     def getInfo(self, key=None):
         # setup
         if self.attributes == {}: self.buildInfo()
-        tab = '\t\t'
 
         missingCount = 0
         for dict in self.attributes.values():
@@ -490,7 +489,20 @@ class exposureObj:
                     count += 1
         return count
 
-
+    # Show image PIL with pixel size
+    def display(self, size=None):
+        path = self.filePath
+        if size:
+            shortest_side = min(self.width, self.height)
+            scale = size / shortest_side
+            new_width = int(self.width * scale)
+            new_height = int(self.height * scale)
+            img = Image.open(path)
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            img.show()
+        else:
+            img = Image.open(path)
+            img.show()
 
 
 
