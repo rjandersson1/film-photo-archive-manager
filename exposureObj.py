@@ -355,30 +355,35 @@ class exposureObj:
 
         print(f'[{self.roll.index}][{self.index}] INFO: [{missingCount}] unassigned attributes ========================================================\n\n')
 
-
+        # Find max key length for alignment
+        max_len = 0
+        for subdict in self.attributes.values():
+            for term in subdict.keys():
+                max_len = max(max_len, len(str(term)))
 
         if key == 'none':
             for dict in self.attributes.values():
                 for term in dict.keys():
                     val = dict[term]
                     if val == None:
-                        print(f'{term}{tab}{val}')
+                        dots = '.' * (max_len - len(term) + 1)
+                        print(f'{term}{dots}{val}')
         elif key == None:
             dict = self.attributes
             for subdict in dict.values():
                 for term in subdict.keys():
                     val = subdict[term]
-                    if val != None: print(f'{term}{tab}{val}')
+                    if val != None:
+                        dots = '.' * (max_len - len(term) + 1)
+                        print(f'{term}{dots}{val}')
         else:
             dict = self.attributes[key]
             for key in dict.keys():
                 val = dict[key]
-                print(f'{key}{tab}{val}') 
+                dots = '.' * (max_len - len(key) + 1)
+                print(f'{key}{dots}{val}')
 
 
-                
-
-    
     # Build attribute dictionary for image
     def buildInfo(self):
         # Build sub-dictionaries
@@ -474,8 +479,6 @@ class exposureObj:
         self.attributesFilm = attributesFilm
         self.attributesCopies = attributesCopies
         self.attributes = attributes
-
-
 
 
     def count_unassigned_attr(self):
