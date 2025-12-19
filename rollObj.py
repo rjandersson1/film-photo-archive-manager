@@ -14,10 +14,14 @@ import shutil
 import subprocess
 from typing import Iterable, Union
 from exposureObj import exposureObj
+from collections import Counter
+from debuggerTool import debuggerTool
 
-DEBUG = False
-WARNING = False
+DEBUG = 0
+WARNING = True
 ERROR = True
+
+db = debuggerTool(DEBUG, WARNING, ERROR) 
 
 
 class rollObj:
@@ -31,6 +35,7 @@ class rollObj:
         self.jpgDirs = None                         # sPath to folder with jpg files
         self.rawDirs = None                         # Path to folder with raw files
         self.images = None                          # List of ExposureMetadata objects, derived
+        self.unmatched_raws = None                 # List of unmatched raw files after verification, derived
 
         # File data TODO
         self.sizeAll = None                         # Total size of roll, derived
@@ -75,12 +80,13 @@ class rollObj:
     def process_roll(self):
         self.process_directory() # get data from folder names
         self.process_images() # fetch all images in the jpgDirs
+        if self.images is None or len(self.images) == 0:
+            self.images = []
+            return
         self.process_exif() # fetch exif data for all images
         self.sort_images() # sort images by exposure number (image.index)
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_metadata() # update film emulsion info for roll and other metadata
-
-        
 
     # 2) Identify filepaths & gather directory data
         # Search through all jpg files and get their filepaths.
@@ -155,6 +161,8 @@ class rollObj:
         if jpgDirs == []:
             if ERROR:
                 print(f'[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"} JPG missing')
+                self.images = []
+                return
         if rawDirs == []:
             if WARNING:
                 print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} RAW missing')
@@ -175,6 +183,8 @@ class rollObj:
         if len(rawDirs): self.rawDirs = rawDirs
         else: self.rawDirs = None
 
+        if self.jpgDirs is None:
+            self.images = []
         return
     
     # 3) Process all image directories and generate ExposureMetadata objects
@@ -197,7 +207,7 @@ class rollObj:
                 continue
 
             # Warn if directory name does not include 'jpg' or 'jpeg'
-            if 'jpg' not in dir_name and 'jpeg' not in dir_name:
+            if 'jpg' not in dir_name and 'jpeg' not in dir_name and 'new' not in dir_name:
                 if WARNING:
                     print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} Folder name might not indicate valid JPG content:\n\t\t{dir_path}')
                 continue
@@ -291,11 +301,20 @@ class rollObj:
 
     # 5) Order images by exposure number
     def sort_images(self):
+        if self.images is None:
+            return
         indices = [img.index for img in self.images]
         if len(indices) != len(set(indices)):
-            if WARNING:
-                print((indices), len(set(indices)))
-                print(f"[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} Duplicate exposure indices found in roll '{self.name}'")
+            if ERROR:
+                # print out duplicate indices
+                index_counts = Counter(indices)
+                duplicates = {idx: count for idx, count in index_counts.items() if count > 1}
+                
+                print(f"[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"} Duplicate exposure indices found in roll '{self.name}'")
+                if DEBUG:
+                    for img in self.images:
+                        if img.index in duplicates:
+                            print(f"\t\t[{img.index}] {img.name}")
 
         # Sort images by index
         self.images.sort(key=lambda img: img.index)
@@ -407,18 +426,27 @@ class rollObj:
         master_list.sort(key=lambda x: x[0])  # Sort by index
 
         # Reindex images based on the index offset
-
         for img in self.images:
+            # print(f"{img.index}")
             if img.containsCopies: # subtract the number of copies from the index for all subsequent images
                 idx = img.index
                 n = len(img.copies)
+                # print(f"\t\tM:{img.index}\tn:{n}")
                 for image in self.images[idx:]:
                     image.index -= n
 
-                # Re index copies
-                for copy in img.copies:
-                    copy.index = img.index
+                # TODO DEBUGGING: Re index copies 
+                # for copy in img.copies:
+                #     copy.index = img.index
+                #     print(f"\t\tM:{img.index}\tn:{n}\tC:{copy.index}")
 
+        
+        # TODO DEBUGGING: Fix panorama raw assignment
+        # Run through all raw files in in rawDirs and identify any potential duplicates or issues
+
+        # if {name}.ARW, if any other file containes {name}, then raise a flag
+        # eg 'DSC01663.ARW' and 'DSC01663-pano.ARW' both exist
+        self.verify_raw_files()
 
         self.sort_images() # re sort images
 
@@ -426,6 +454,7 @@ class rollObj:
     def update_metadata(self):
         self.update_filmformat()
         self.update_stock_metadata()
+        self.update_locations()
 
     # Update stock-related attributes using first image STK to identify stock among collection stock list.
     def update_stock_metadata(self):
@@ -451,7 +480,7 @@ class rollObj:
                 self.fontColor = tuple(map(int, stock['color'].split(','))) # '252, 194, 180, 255' --> tuple(rgba)
                 stkFound = True
         if WARNING and not stkFound:
-            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}" in {self.collection.stocklist.keys()}')
+            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}"')
 
 
         # Cast metadata back to all images (if no STK found, casts None and throws warning)
@@ -542,7 +571,7 @@ class rollObj:
             if self.images[i].dateExposed < self.images[i-1].dateExposed:
                 # date_increasing = False
                 if WARNING:
-                    print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}')
+                    print(f'[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}:\n\t\t[{self.images[i-1].index}] {self.images[i-1].dateExposed} > [{self.images[i].index}] {self.images[i].dateExposed}')
                 break
 
 
@@ -587,7 +616,25 @@ class rollObj:
                 copy.filmtype = self.filmtype
                 copy.filmformat = self.filmformat
 
+    # filter images by rating
+    def filter_by_rating(self, stars, logic, include_copies=False):
+        selected = []
 
+        for img in self.images:
+            if logic == '>=' and img.rating >= stars:
+                selected.append(img)
+                if include_copies:
+                    selected.extend(img.copies)
+            elif logic == '<=' and img.rating <= stars:
+                selected.append(img)
+                if include_copies:
+                    selected.extend(img.copies)
+            elif logic == '==' and img.rating == stars:
+                selected.append(img)
+                if include_copies:
+                    selected.extend(img.copies)
+
+        return selected
 
 
 
@@ -665,3 +712,99 @@ class rollObj:
             if ERROR:
                 print(f'[{self.index}]\t{"\033[35m"}ERROR:{"\033[0m"}: Failed to open exiftool!\n')
             return None
+        
+    # run through locations on roll and choose 1-2 major ones to assign to roll
+    def update_locations(self):
+        # Prorities:
+            # choose most common locations (2 max)
+
+        location_counts = {}
+        for img in self.images:
+            location = img.location
+            if location:
+                if location in location_counts:
+                    location_counts[location] += 1
+                else:
+                    location_counts[location] = 1
+        
+        if not location_counts:
+            self.locations = []
+            return
+        
+        # Sort locations by count
+        sorted_locations = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)
+        top_locations = [loc[0] for loc in sorted_locations[:2]]
+        self.locations = top_locations
+        
+
+
+        return
+    
+
+    def check_for_dupe_raw(self):
+        for rawDir in self.rawDirs:
+            if rawDir == -1:
+                continue
+            raw_files = os.listdir(rawDir)
+            raw_names = [os.path.splitext(f)[0].split('-')[0] for f in raw_files]
+            raw_name_counts = Counter(raw_names)
+            for name, count in raw_name_counts.items():
+                if count > 1:
+                    db.e(f'[{self.index}]', f'Multiple RAW files under {name}')
+
+
+
+    # check all img and copies match to a raw file, flag any that are duplicates or missing
+    def verify_raw_files(self):
+        # Build set of raw filenames (without extensions)
+        raw_filenames = set()
+        if self.rawDirs and self.rawDirs[0] != -1:
+            for rawDir in self.rawDirs:
+                for file in os.listdir(rawDir):
+                    if file.lower().endswith(('.arw', '.dng')):
+                        raw_filenames.add(file)
+
+        # Walk through all images and copies and ensure raw file exists. If exists, remove from set. Print remaining unmatched raws at end.
+        unmatched_raws = raw_filenames.copy()
+
+        for img in self.images:
+            imgRawName = img.rawFileName
+            if imgRawName in unmatched_raws:
+                unmatched_raws.discard(imgRawName)
+            else:
+                db.w(f'[{self.index}][{img.index}]', f'No matching RAW file for image:', imgRawName)
+
+            for copy in img.copies:
+                copy_rawName = copy.rawFileName
+                if copy_rawName in unmatched_raws:
+                    unmatched_raws.discard(copy_rawName)
+                else:
+                    if copy.isPano:
+                        # find corresponding pano raw file: eg match DSC01694.ARW <--> DSC01694-pano.dng
+                        base_name = os.path.splitext(copy_rawName)[0]+'-Pano'
+                        pano_raw_candidates = [f for f in raw_filenames if f.startswith(base_name) and '-Pano' in os.path.splitext(f)[0]]
+                        new_raw_name = 'N/A'
+                        if pano_raw_candidates:
+                            new_raw_name = pano_raw_candidates[0]
+                            copy.rawFileName = new_raw_name
+                            copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
+                            unmatched_raws.discard(new_raw_name)
+                            db.w(f'[{self.index}][{img.index}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
+                        else:
+                            db.w(f'[{self.index}][{img.index}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
+                    else:
+                        db.w(f'[{self.index}][{img.index}]', f'No matching RAW file for image:', f'{copy_rawName}')
+
+                    
+
+        if len(unmatched_raws) > 0:
+            unmatched_files = list(unmatched_raws)
+            # build paths to unmatched raws
+            self.unmatched_raws = []
+            for rawDir in self.rawDirs:
+                for rawFile in unmatched_files:
+                    rawPath = os.path.join(rawDir, rawFile)
+                    if os.path.exists(rawPath):
+                        self.unmatched_raws.append(rawPath)
+
+            db.w(f'[{self.index}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
