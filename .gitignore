@@ -712,3 +712,7 @@ __pycache__/FilmCollection.cpython-311.pyc
 __pycache__/FilmCollectionDef.cpython-311.pyc
 __pycache__/RollMetadata.cpython-311.pyc
 __pycache__/RollMetadataDef.cpython-311.pyc
+*.ARW
+*.dng
+.DS_Store
+data/.DS_Store
