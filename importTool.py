@@ -30,7 +30,11 @@ class importTool:
         stk = img.stk
         cam = img.cam
         lns = img.lns
-        location = img.state
+        location = img.location
+        if location is None:
+            location = img.state
+            if location is None:
+                location = img.country
         rating = img.rating
 
         date_str = date.strftime('%y%m%d') if date is not None else '??????'
@@ -40,12 +44,7 @@ class importTool:
         base_name = f"{roll_index}_{date_str}_{index_str}_{stk}_{location}_{cam}_{lns}_{rating}s"
 
         if img.isCopy:
-            if img.isStitched or img.isPano:
-                new_name = f"{base_name}_pano"
-            elif img.isGrayscale and img.isColor:
-                new_name = f"{base_name}_BW"
-            else:
-                new_name = f"{base_name}_edit"
+            new_name = f"{base_name}_{img.copyType}"
         else:
             new_name = f"{base_name}"
 
