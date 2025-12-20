@@ -98,6 +98,7 @@ class exposureObj:
         self.isCopy = None                  # Is duplicate, cast
         self.isGrayscale = None             # Is grayscale, EXIF
         self.isStitched = None              # Is stitched, EXIF
+        self.copyType = None                # Type of virtual copy (pano, BW, edit), string, derived
         self.attributesCopies = {}
 
 
@@ -261,6 +262,18 @@ class exposureObj:
         # Update derived attributes
         self._update_derived_attributes()
 
+    # Define copy types and pass to relevant copies
+    def update_copy_type(self):
+        if self.isCopy:
+            if self.isStitched or self.isPano:
+                self.copyType = 'pano'
+            elif self.isColor and self.isGrayscale:
+                self.copyType = 'BW'
+            elif self.original.aspectRatio != self.aspectRatio:
+                self.copyType = 'crop'
+            else:
+                self.copyType = 'edit'
+
     # Helper function to get nested EXIF values with optional conversion and default.
     def _get_exif(self, path, conv=None, default=None):
         d = self.exif
@@ -390,7 +403,6 @@ class exposureObj:
                 dots = '.' * (max_len - len(key) + 1)
                 print(f'{key}{dots}{val}')
 
-
     # Build attribute dictionary for image
     def buildInfo(self):
         # Build sub-dictionaries
@@ -486,7 +498,6 @@ class exposureObj:
         self.attributesFilm = attributesFilm
         self.attributesCopies = attributesCopies
         self.attributes = attributes
-
 
     def count_unassigned_attr(self):
         self.buildInfo()
