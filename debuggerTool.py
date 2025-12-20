@@ -24,12 +24,6 @@ class debuggerTool:
         self._progress_last_len = 0
         self._progress_last_time = 0.0
         self._progress_start_time = None
-        
-
-
-        print(self.colorize("Debugger tool initialized.", self.col_debug))
-
-
         return
     
     def colorize(self, str, col):
@@ -149,13 +143,15 @@ class debuggerTool:
 
         prefix = self.colorize(pre_padded, col)
 
-        # 🔹 color the bar green on completion
         if current == total:
             bar = self.colorize(bar_raw, self.col_success)
         else:
             bar = bar_raw
 
-        line = f"{prefix}[{bar}] {pct:3d}% ({current}/{total}) {post}{eta_str}"
+        if current != total:
+            line = f"{prefix}[{bar}] {pct:3d}% ({current}/{total}) {post}{eta_str}"
+        if current == total:
+            line = f"{prefix}[{bar}] {pct:3d}% ({current}/{total}) {post}{elapsed:.1f}"
 
         pad = max(self._progress_last_len - len(line), 0)
         out = "\r" + line + (" " * pad)
@@ -170,6 +166,7 @@ class debuggerTool:
 
         if current == total:
             self._progress_last_time = 0.0
+            self._progress_active = False
 
                   
 
