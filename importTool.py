@@ -42,7 +42,7 @@ class importTool:
         if img.isCopy:
             if img.isStitched or img.isPano:
                 new_name = f"{base_name}_pano"
-            elif img.isGrayscale:
+            elif img.isGrayscale and img.isColor:
                 new_name = f"{base_name}_BW"
             else:
                 new_name = f"{base_name}_edit"
@@ -64,7 +64,7 @@ class importTool:
         dest_path = os.path.join(dest_folder, img.rawFileName)
 
         if src_path is None:
-            db.e(f'[{img.roll.index}][{img.index_str}]', 'No RAW file path found for image. Cannot copy RAW.')
+            # db.e(f'[{img.roll.index}][{img.index_str}]', 'No RAW file path found for image. Cannot copy RAW.')
             return
 
 
