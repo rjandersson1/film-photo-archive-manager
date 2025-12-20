@@ -17,7 +17,7 @@ from exposureObj import exposureObj
 from collections import Counter
 from debuggerTool import debuggerTool
 
-DEBUG = 0
+DEBUG = 1
 WARNING = True
 ERROR = True
 
@@ -87,7 +87,7 @@ class rollObj:
             self.images = []
             return
         self.process_exif() # fetch exif data for all images
-        self.sort_images() # sort images by exposure number (image.index)
+        # self.sort_images() # sort images by exposure number (image.index)
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_metadata() # update film emulsion info for roll and other metadata
 
@@ -286,18 +286,14 @@ class rollObj:
             
             # Grab exif
             pathsToFetch.append(path)
-            if DEBUG:
-                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Fetching EXIF...')
-            exif = self.fetch_exif(pathsToFetch)[0]
 
+            db.d(f'[{self.index_str}]','Fetching EXIF...')
+            exif = self.fetch_exif(pathsToFetch)[0]
             # cast to back to image
             if exif is not None:
-                if DEBUG:
-                    print(f'\t\t\t{"\033[32m"}SUCCESS{"\033[0m"}')
                 image.set_exif(exif)
             else:
-                if DEBUG:
-                    print(f'\t\t\t{"\033[31m"}FAILED{"\033[0m"}')
+                db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED')
             return
 
         # Else, handle all files in buffer
@@ -310,16 +306,12 @@ class rollObj:
                     pathsToFetch.append(image.filePath)
             
             # Fetch exifs.
-            if DEBUG:
-                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Fetching EXIF...')
+            db.d(f'[{self.index_str}]','Fetching EXIF...')
             data = self.fetch_exif(pathsToFetch)
-            # Print success
-            if data is not None:
-                if DEBUG:
-                    print(f'\t\t\t{"\033[32m"}SUCCESS{"\033[0m"}')
-            else:
-                if DEBUG:
-                    print(f'\t\t\t{"\033[31m"}FAILED{"\033[0m"}')
+
+            if data is None:
+                db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED')
+            
             # Cast data back to image. Assert paths must match!
             for i in range(len(pathsToFetch)):
                 path = pathsToFetch[i]
@@ -331,12 +323,10 @@ class rollObj:
 
                 # Assert path match
                 if p != path:
-                    if ERROR:
-                        print(f'[{self.index_str}] [{image.index_str}]\\ERROR: Img path does not match exif source path:\n\t\tImage: {path}\n\t\tExif: {p}')
+                    db.e(f'[{self.index_str}][{image.index_str}]', 'Img path does not match exif source path:', [('Image:', path), ('EXIF', p)])
                     continue
-                
-                # cast exif to image
-                image.set_exif(exif)
+
+                image.set_exif(exif) # cast exif to image
 
     # 5) Order images by exposure number
     def sort_images(self):
@@ -364,137 +354,102 @@ class rollObj:
         # If yes, build a list of each group of duplicate objects: list[0] == master copy. Sort by image.dateCreated. Oldest is the master.
         # Handle copies by nesting them in the master copy object.
     def process_copies(self):
-        copies_dict = {}
-        copies_to_remove = []
-        master_list = []
+        # Hardcode skip for rolls 6 and 12
+        if self.index in (6,12):
+            db.w(f'[{self.index_str}]', 'Skipping copy check on roll (hardcode workaround)', self.index_str)
+            self.containsCopies = False
+            for img in self.images:
+                img.isOriginal = True
+                img.isCopy = False
+                img.containsCopies = False
+                img.copyCount = 0
+                img.copies = []
+                img.original = img
+            return
+
+        # -------- Step 0: initialize and reset attributes --------
+        self.containsCopies = False
+
+        # Helper fn to rank master based on if stitched/greyscale
+        def master_rank(x):
+            # Prefer non-stitched and non-greyscale, then sort by dateExposed
+            derived = 0 if (x.isStitched or (x.isGrayscale and x.isColor)) else 1 # 1 is better
+            return (derived, x.dateCreated) # TODO: original used x.dateCreated. check behaviour here
+        
+
+        for img in self.images:
+            # keep existing img.copies if you want, but safest is to rebuild
+            img.copies = []
+            img.isOriginal = True
+            img.isCopy = False
+            img.containsCopies = False
+            img.copyCount = 0
+            img.original = img
+
+        # -------- Step 1: group by dateExposed --------
+        groups = {}
         for img in self.images:
             key = img.dateExposed
-
-            # Build dict of copies if date key matches
-            if key not in copies_dict:
-                copies_dict[key] = []
-            copies_dict[key].append(img)
-
-        self.containsCopies = False
-        for group in copies_dict.values():
-
-            if len(group) > 1:
-                if DEBUG:
-                    print(f'[{group[0].roll.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} copy found between:')
-                    for image in group:
-                        print(f'\t\t[{image.index_str}] {image.dateExposed}: {image.name}')
-
-                if group[0].roll.index == 12:
-                    print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 12...')
-                    for image in group:
-                        master = image
-                        
-                        # Handle master copy attributes
-                        master.isOriginal = True
-                        master.isCopy = False
-                        master.containsCopies = False
-                        master.copyCount = 0
-                        master.original = master
-                    continue
-
-                if group[0].roll.index == 6:
-                    print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> skipping copy check on roll 6...')
-                    for image in group:
-                        master = image
-                        
-                        # Handle master copy attributes
-                        master.isOriginal = True
-                        master.isCopy = False
-                        master.containsCopies = False
-                        master.copyCount = 0
-                        master.original = master
-                    continue
-
-
-                self.containsCopies = True
-
-                # Prefer non-stitched / non-grayscale, then newest dateCreated
-                master = max(
-                    group,
-                    key=lambda x: (
-                        0 if (x.isStitched or x.isGrayscale) else 1,  # base (1) > derived (0)
-                        x.dateCreated
-                    )
-                )
-
-                copies = [img for img in group if img is not master]
-
-
-                oldest_index = min(img.index for img in group)
-                master.index = oldest_index
-
-
-                master.isOriginal = True
-                master.containsCopies = True
-                master.isCopy = False
-
-                master.copies = copies
-                master.copyCount = len(copies)
-
-                for copy in master.copies:
-                    copy.isOriginal = False
-                    copy.containsCopies = False
-                    copy.isCopy = True
-                    copy.index = master.index
-                    copy.original = master
-
-                # Handle removal of copies from main list and index offset
-                for copy in master.copies:
-                    copies_to_remove.append(copy)
-                    master_list.append((master.index, len(master.copies)))
-            else:
+            groups.setdefault(key, []).append(img)
+        
+        # -------- Step 2: Identify master and pass copies --------
+        masters = []
+        for dt, group in groups.items():
+            
+            # Unique dateExpose --> master
+            if len(group) == 1:
                 master = group[0]
-                
-                # Handle master copy attributes
-                master.isOriginal = True
-                master.isCopy = False
-                master.containsCopies = False
-                master.copyCount = 0
-                master.original = master
-        
-        if not self.containsCopies:
-            return
-        
-        # Handle removal of copies and reindexing
-        copies_set = set(copies_to_remove)
-        self.images = [img for img in self.images if img not in copies_set]
-        master_list.sort(key=lambda x: x[0])  # Sort by index
+                masters.append(master)
+                continue
 
-        # Reindex images based on the index offset
-        for img in self.images:
-            # print(f"{img.index}")
-            if img.containsCopies: # subtract the number of copies from the index for all subsequent images
-                idx = img.index
-                n = len(img.copies)
-                # print(f"\t\tM:{img.index}\tn:{n}")
-                for image in self.images[idx:]:
-                    image.index -= n
+            self.containsCopies = True
 
-                # TODO DEBUGGING: Re index copies 
-                # for copy in img.copies:
-                #     copy.index = img.index
-                #     print(f"\t\tM:{img.index}\tn:{n}\tC:{copy.index}")
+            # master: best rank -> derived=1 beats derived=0, then newest dateCreated wins
+            master = max(group, key=master_rank)
+            copies = [x for x in group if x is not master]
 
-        
-        # TODO DEBUGGING: Fix panorama raw assignment
-        # Run through all raw files in in rawDirs and identify any potential duplicates or issues
+            master.copies = copies
+            master.isOriginal = True
+            master.isCopy = False
+            master.containsCopies = True
+            master.copyCount = len(copies)
+            master.original = master
 
-        # if {name}.ARW, if any other file containes {name}, then raise a flag
-        # eg 'DSC01663.ARW' and 'DSC01663-pano.ARW' both exist
+            for c in copies:
+                c.isOriginal = False
+                c.isCopy = True
+                c.containsCopies = False
+                c.copyCount = 0
+                c.original = master
+
+            masters.append(master)
+
+        # -------- Step 3: Sort by exposure time and reindex --------
+        masters.sort(key=lambda x: x.dateExposed)
+
+        for new_idx, master in enumerate(masters, start=1):
+            master.index = new_idx
+            master.index_str = str(new_idx).zfill(2)
+
+            for copy in master.copies:
+                copy.index = new_idx
+                copy.index_str = str(new_idx).zfill(2)
+
+        # -------- Step 4: Pass back to roll --------
+        self.images = masters
+
+        # -------- Step 5: Verify and sort --------
         self.verify_raw_files()
-
-        self.sort_images() # re sort images
+        self.sort_images()
 
     # 7) Update final film-specific metadata
     def update_metadata(self):
         self.update_filmformat()
         self.update_stock_metadata()
         self.update_locations()
+        for img in self.images:
+            for copy in img.copies:
+                copy.update_copy_type()
 
     # Update stock-related attributes using first image STK to identify stock among collection stock list.
     def update_stock_metadata(self):
@@ -556,9 +511,6 @@ class rollObj:
             # print warning saying multiple cameras for one roll
             if WARNING:
                 print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} multiple cameras found in roll: {self.cameras}')
-
-            
-            
 
 
         # Cast date attributes
@@ -831,13 +783,14 @@ class rollObj:
                             copy.rawFileName = new_raw_name
                             copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
                             unmatched_raws.discard(new_raw_name)
-                            db.w(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
+                            db.d(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
                         else:
-                            db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
-                    else:
-                        if self.rawDirs is not None or self.countRaw is not None:
-                            print(self.countRaw)
-                            db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'{copy_rawName}')
+                            db.e(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
+                    # else:
+                    #     if self.rawDirs is not None or self.countRaw is not None:
+                    #         print(self.countRaw)
+                    #         db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for copy:', f'{copy_rawName}')
+                    # [REMOVED AS VC WILL ALWAYS SHARE THE SAME RAW FILE UNLESS THEY ARE STITCHED PANORAMAS]
 
                     
 
