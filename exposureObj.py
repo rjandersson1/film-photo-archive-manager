@@ -121,36 +121,43 @@ class exposureObj:
     def process_fileName(self):
         name = self.name
 
-        # Case 1: 22-10-02 Ektar 100 Seebach 1.jpg
-        if ' - ' not in name:
-            n = name.split(' ') # [22-10-02, Ektar, 100, Seebach, 1]
-            try:
-                self.index= int(n[-1])
-            except Exception:
-                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [1] Could not get exposure index from:\n\t\t{name}')
-                self.index= None
+        # Case 0: new style: 072_230907_10_P400_Zug_F3'_55f2.8_3s_pano.jpg
+        if self.roll.isNewCollection:
+            n = name.split('_')
+            self.index = int(n[2])
+            self.index_str = n[2]
 
-        # Case 2: 22-07-28 - 1 - Flims - Superia 400 -  - 5s.jpg
-        elif ' - ' in name and '#' not in name:
-            n = name.split(' - ')  # [22-07-28, 1, Flims, Superia 400, , 5s]
-            try:
-                self.index= int(n[1])
-            except Exception:
-                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [2] Could not get exposure index from:\n\t\t{name}')
-                self.index= None
-    
-
-        # Case 3: 23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2.jpg
-        elif ' - ' in name and '#' in name:
-            n = name.split(' - ')  # [23-01-01, Zurich, Ektar 100, F3, 3s, #2]
-            try:
-                self.index= int(n[-1].split('#')[-1])
-            except Exception:
-                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [3] Could not get exposure index from:\n\t\t{name}')
-                self.index= None
         else:
-            if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [E] Could not get exposure index from:\n\t\t{name}')
-            self.index= None
+            # Case 1: 22-10-02 Ektar 100 Seebach 1.jpg
+            if ' - ' not in name:
+                n = name.split(' ') # [22-10-02, Ektar, 100, Seebach, 1]
+                try:
+                    self.index= int(n[-1])
+                except Exception:
+                    if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [1] Could not get exposure index from:\n\t\t{name}')
+                    self.index= None
+
+            # Case 2: 22-07-28 - 1 - Flims - Superia 400 -  - 5s.jpg
+            elif ' - ' in name and '#' not in name:
+                n = name.split(' - ')  # [22-07-28, 1, Flims, Superia 400, , 5s]
+                try:
+                    self.index= int(n[1])
+                except Exception:
+                    if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [2] Could not get exposure index from:\n\t\t{name}')
+                    self.index= None
+        
+
+            # Case 3: 23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2.jpg
+            elif ' - ' in name and '#' in name:
+                n = name.split(' - ')  # [23-01-01, Zurich, Ektar 100, F3, 3s, #2]
+                try:
+                    self.index= int(n[-1].split('#')[-1])
+                except Exception:
+                    if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [3] Could not get exposure index from:\n\t\t{name}')
+                    self.index= None
+            else:
+                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [E] Could not get exposure index from:\n\t\t{name}')
+                self.index= None
 
         self.index_original = self.index  # Store original index for later use
 
