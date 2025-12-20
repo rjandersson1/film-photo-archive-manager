@@ -13,14 +13,17 @@ import glob
 
 # sys.path.append(os.path.abspath(r'C:\A_Documents\Documents\Coding\Lightroom_FileFinder'))
 from rollObj import rollObj
+from debuggerTool import debuggerTool
 
-WARNING = False
-DEBUG = True
-ERROR = False
+DEBUG = 1
+WARNING = 1
+ERROR = 1
+
+db = debuggerTool(DEBUG, WARNING, ERROR)
 
 class collectionObj:
     def __init__(self, directory):
-        print("[I]\tImporting collection...")
+        db.i('[I]', 'Importing collection...')
         # Initialize FilmCollection with a base directory
         self.directory = directory
         self.paths_rolls = [] # List of tuples (index, folder_path) for each roll
@@ -130,7 +133,7 @@ class collectionObj:
     # Imports rolls
     def _import_rolls(self):
         for directory in self.subdirectories:
-            print(f"[I]\tImporting from {directory}...")
+            db.i('[I]', f'Importing from...', [directory])
             self.add_rolls_from_directory(directory)
 
     # Indexes and sorts a list of filepaths
@@ -557,7 +560,7 @@ class collectionObj:
 
     # From directory list, imports specific roll (via index XXX)
     def import_roll(self, index):
-        print(f"[I]\tImporting roll #{index}...")
+        db.i('[I]', f'Importing roll:', index)
 
         # Find the path for the specified index in self.paths_rolls
         path_roll = None
@@ -566,7 +569,7 @@ class collectionObj:
                 path_roll = path
                 break
         if path_roll is None:
-            print(f"[I]\tRoll with index {index} not found in the collection.")
+            db.w('[I]', f'Roll not found in the collection:', index)
             return
 
         new_roll = rollObj(directory=path_roll, collection=self)
@@ -577,7 +580,7 @@ class collectionObj:
     
     # Identifies collection directory and builds a directory tree
     def build_directory_tree(self):
-        path_library = self.directory # typically /.../photography/film/library/ (or legacy (debugging): .../filmCollectionTest/)
+        path_library = self.directory # typically /.../photography/film/library/
 
         # Identify years in library
         paths_years = []
@@ -601,11 +604,10 @@ class collectionObj:
             
             self.paths_rolls = paths_rolls
 
-        if DEBUG:
-            print(f'[I]\t{"\033[33m"}DEBUG:{"\033[0m"} Directory tree built with {len(self.paths_rolls)} rolls found:')
-            # print first two and last two entries and ;...; between. newline for each entry
-            for entry in (self.paths_rolls[:2] + ['...'] + self.paths_rolls[-2:]):
-                print(f'\t\t {entry}')
+        if len(self.paths_rolls) == 0:
+            db.w('[I]', 'No rolls found in the library directory:', path_library)
+        else:
+            db.d('[I]', f'Library with {len(self.paths_rolls)} rolls identified', [self.paths_rolls[0], '...', self.paths_rolls[-1]])
 
 
         return
@@ -617,7 +619,6 @@ class collectionObj:
     #   (12,13,15) - imports rolls within the specified range (inclusive)
     #   ('13-18') - imports rolls within the specified range (inclusive)
     def import_rolls(self, rolls):
-
         # Determine target indices based on input type
         if isinstance(rolls, str) and rolls.lower() == 'all': # e.g., 'all'
             target_indices = [int(idx) for idx, _ in self.paths_rolls]
