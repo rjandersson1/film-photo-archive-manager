@@ -90,6 +90,7 @@ class rollObj:
         # self.sort_images() # sort images by exposure number (image.index)
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_metadata() # update film emulsion info for roll and other metadata
+        self.verify_roll()
 
     # 2) Identify filepaths & gather directory data
         # Search through all jpg files and get their filepaths.
@@ -805,3 +806,12 @@ class rollObj:
                         self.unmatched_raws.append(rawPath)
 
             db.w(f'[{self.index_str}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
+
+    # Verify attributes on roll and print a summary
+    def verify_roll(self):
+        for img in self.images:
+            if (img.location is None or img.state is None or img.country is None):
+                db.e(f'[{self.index_str}][{img.index_str}]', 'Unknown location!')
+            for copy in img.copies:
+                if (copy.location is None or copy.state is None or copy.country is None):
+                    db.e(f'[{self.index_str}][{copy.index_str}]', 'Unknown location!')
