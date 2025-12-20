@@ -34,8 +34,10 @@ class rollObj:
         self.name = os.path.basename(directory)     # eg. '2_22-06-12 Gold 200 Zurich'
         self.jpgDirs = None                         # sPath to folder with jpg files
         self.rawDirs = None                         # Path to folder with raw files
+        self.rawMissing = None                      # Flag for whether raw files could be found
         self.images = None                          # List of ExposureMetadata objects, derived
         self.unmatched_raws = None                 # List of unmatched raw files after verification, derived
+        self.isNewCollection = False                  # if searching using new collection formatting
 
         # File data TODO
         self.sizeAll = None                         # Total size of roll, derived
@@ -105,59 +107,92 @@ class rollObj:
         jpgDirs = []
         rawDirs = []
 
-        # Search main directory
-        for file in os.listdir(dir):
-            path = os.path.join(dir, file)
-            # Skip if a file
-            if os.path.isfile(path): continue
+        # search new structure
+        new_rawDir = os.path.join(dir, '01_scans')
+        new_jpgDir = os.path.join(dir, '02_exports')
+        new_copyDir = os.path.join(dir, '04_edits')
+        new_rawDir_backups = os.path.join(dir, '05_other','01_unmatched_raws')
+        if os.path.isdir(new_jpgDir):
+            self.isNewCollection = True
+            jpgDirs.append(new_jpgDir)
 
-            # Check main directory for jpg or raw files
-            for file in os.listdir(dir):
-                if file.lower().endswith('.jpg') or file.lower().endswith('.png'):
-                    jpgDirs.append(dir)
-                    break
-            for file in os.listdir(dir):
-                if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
-                    rawDirs.append(dir)
-                    break
+            # Check in 01_scans
+            if os.path.isdir(new_rawDir):
+                contains_files = 0
+                for file in os.listdir(new_rawDir):
+                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
+                        contains_files = 1
+                if contains_files:
+                    self.rawMissing = False
+                    rawDirs.append(new_rawDir)
             
-        # Search subdirs (only one tier)
-        for file in os.listdir(dir):
-            path = os.path.join(dir, file)
-            # Skip if a file
-            if os.path.isfile(path): continue
+            # Check in 05_other/01_unmatched_raws
+            if os.path.isdir(new_rawDir_backups):
+                contains_files = 0
+                for file in os.listdir(new_rawDir_backups):
+                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
+                        contains_files = 1
+                if contains_files:
+                    self.rawMissing = False
+                    rawDirs.append(new_rawDir_backups)
 
-            # search through subdirs
-            for file in os.listdir(path):
-                # Warn if contains subsubdirs
-                conditions_ignore = (
-                    file == "Scene" or
-                    file == "Camera"
-                )
-                if conditions_ignore: continue
-                if WARNING and os.path.isdir(os.path.join(path,file)):
-                    print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} additional subfolders in image directory:\n\t\t"{file}" in {path}')
+            # Check copies
+            if os.path.isdir(new_copyDir):
+                jpgDirs.append(new_copyDir)
 
-                conditions = (
-                    file.lower().endswith('.jpg') or
-                    file.lower().endswith('.png')
-                )
-                conditions_ignore = (
-                    file == "Scene" or
-                    file == "Camera"
-                )
-                # print("[",index,'] ', conditions, conditions_ignore)
-                if conditions:
-                    if conditions_ignore:
-                        continue
-                    jpgDirs.append(path)
-                    break
-            for file in os.listdir(path):
-                if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
-                    rawDirs.append(path)
-                    break
+        # Revert to old approach
+        else:
+            # Search main directory
+            for file in os.listdir(dir):
+                path = os.path.join(dir, file)
+                # Skip if a file
+                if os.path.isfile(path): continue
 
+                # Check main directory for jpg or raw files
+                for file in os.listdir(dir):
+                    if file.lower().endswith('.jpg') or file.lower().endswith('.png'):
+                        jpgDirs.append(dir)
+                        break
+                for file in os.listdir(dir):
+                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
+                        rawDirs.append(dir)
+                        break
+            
+            # Search subdirs (only one tier)
+            for file in os.listdir(dir):
+                path = os.path.join(dir, file)
+                # Skip if a file
+                if os.path.isfile(path): continue
 
+                # search through subdirs
+                for file in os.listdir(path):
+                    # Warn if contains subsubdirs
+                    conditions_ignore = (
+                        file == "Scene" or
+                        file == "Camera"
+                    )
+                    if conditions_ignore: continue
+                    if WARNING and os.path.isdir(os.path.join(path,file)):
+                        print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} additional subfolders in image directory:\n\t\t"{file}" in {path}')
+
+                    conditions = (
+                        file.lower().endswith('.jpg') or
+                        file.lower().endswith('.png')
+                    )
+                    conditions_ignore = (
+                        file == "Scene" or
+                        file == "Camera"
+                    )
+                    # print("[",index,'] ', conditions, conditions_ignore)
+                    if conditions:
+                        if conditions_ignore:
+                            continue
+                        jpgDirs.append(path)
+                        break
+                for file in os.listdir(path):
+                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
+                        rawDirs.append(path)
+                        break
 
         # Print warnings if no jpg/raw files found
         if jpgDirs == []:
@@ -166,17 +201,15 @@ class rollObj:
                 self.images = []
                 return
         if rawDirs == []:
-            if WARNING:
-                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} RAW missing')
-                rawDirs.append(-1)
+            db.w(f'[{self.index_str}]', 'Raw missing!')
+            self.rawMissing = True
+            rawDirs.append(-1)
 
         # Print warnings if multiple jpg/raw dirs identified
-        if len(jpgDirs) > 1:
-            if WARNING:
-                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} {len(jpgDirs)} JPG dirs found!')            
-        if len(rawDirs) > 1:
-            if WARNING:
-                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} {len(rawDirs)} RAW dirs found!')
+        if len(jpgDirs) > 1 and not self.isNewCollection:
+            db.w(f'[{self.index_str}]',f'{len(jpgDirs)} JPG dirs found!')
+        if len(rawDirs) > 1 and not self.isNewCollection:
+            db.w(f'[{self.index_str}]',f'{len(rawDirs)} RAW dirs found!')
 
         # Update attributes
         if len(jpgDirs): self.jpgDirs = jpgDirs 
@@ -199,27 +232,30 @@ class rollObj:
                 print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} No JPG directories found for roll:\n\t\t{self.name}')
             return
 
+        if not self.isNewCollection:
+            for dir_path in self.jpgDirs:
+                dir_name = os.path.basename(dir_path).lower()
+
+                # Skip directories with '5mb' or '5mp' in the name
+                if '5mb' in dir_name or '5mp' in dir_name:
+                    if DEBUG:
+                        print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Skipping directory with "5mb"/"5mp" in name:\n\t\t{dir_path}')
+                    continue
+
+                # Warn if directory name does not include 'jpg' or 'jpeg'
+                if 'jpg' not in dir_name and 'jpeg' not in dir_name and 'new' not in dir_name:
+                    if WARNING:
+                        print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} Folder name might not indicate valid JPG content:\n\t\t{dir_path}')
+                    continue
+
+        # Process valid image files
         for dir_path in self.jpgDirs:
-            dir_name = os.path.basename(dir_path).lower()
-
-            # Skip directories with '5mb' or '5mp' in the name
-            if '5mb' in dir_name or '5mp' in dir_name:
-                if DEBUG:
-                    print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Skipping directory with "5mb"/"5mp" in name:\n\t\t{dir_path}')
-                continue
-
-            # Warn if directory name does not include 'jpg' or 'jpeg'
-            if 'jpg' not in dir_name and 'jpeg' not in dir_name and 'new' not in dir_name:
-                if WARNING:
-                    print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} Folder name might not indicate valid JPG content:\n\t\t{dir_path}')
-                continue
-
-            # Process valid image files
             for file in os.listdir(dir_path):
                 if file.lower().endswith(('.jpg', '.jpeg', '.png')):
                     file_path = os.path.join(dir_path, file)
                     image = exposureObj(self, file_path)
                     images.append(image)
+
         
         # Update image list attribute
         self.images = images
@@ -313,7 +349,7 @@ class rollObj:
                 index_counts = Counter(indices)
                 duplicates = {idx: count for idx, count in index_counts.items() if count > 1}
                 
-                print(f"[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"} Duplicate exposure indices found in roll '{self.name}'")
+                db.e(f"[{self.index_str}]", 'Duplicate exposure indices found in roll: ', [duplicates])
                 if DEBUG:
                     for img in self.images:
                         if img.index in duplicates:
@@ -486,7 +522,6 @@ class rollObj:
         if WARNING and not stkFound:
             print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}"')
 
-
         # Cast metadata back to all images (if no STK found, casts None and throws warning)
         for image in self.images:
             image.stock = self.stock
@@ -573,9 +608,7 @@ class rollObj:
         # date_increasing = True
         for i in range(1, len(self.images)):
             if self.images[i].dateExposed < self.images[i-1].dateExposed:
-                # date_increasing = False
-                if WARNING:
-                    print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} dateExposed not increasing with index between exposures {self.images[i-1].index} and {self.images[i].index}:\n\t\t[{self.images[i-1].index_str}] {self.images[i-1].dateExposed} > [{self.images[i].index_str}] {self.images[i].dateExposed}')
+                db.w(f'[{self.index_str}]', 'dateExposed not increasing with index between exposures', f'[{self.images[i-1].index}] {self.images[i-1].dateExposed.time()} > {self.images[i].dateExposed.time()} [{self.images[i].index}]')
                 break
 
 
@@ -761,10 +794,10 @@ class rollObj:
                 if count > 1:
                     db.e(f'[{self.index_str}]', f'Multiple RAW files under {name}')
 
-
-
     # check all img and copies match to a raw file, flag any that are duplicates or missing
     def verify_raw_files(self):
+        if self.rawMissing:
+            return
         # Build set of raw filenames (without extensions)
         raw_filenames = set()
         if self.rawDirs and self.rawDirs[0] != -1:
@@ -802,7 +835,9 @@ class rollObj:
                         else:
                             db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
                     else:
-                        db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'{copy_rawName}')
+                        if self.rawDirs is not None or self.countRaw is not None:
+                            print(self.countRaw)
+                            db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'{copy_rawName}')
 
                     
 
