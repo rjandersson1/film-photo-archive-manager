@@ -105,7 +105,7 @@ class debuggerTool:
         if (now - self._progress_last_time) < every and current != total:
             return
 
-        if not self._progress_active:
+        if not self._progress_active and current != total:
             self._progress_active = True
             self._progress_start_time = now
 
@@ -151,7 +151,7 @@ class debuggerTool:
         if current != total:
             line = f"{prefix}[{bar}] {pct:3d}% ({current}/{total}) {post}{eta_str}"
         if current == total:
-            line = f"{prefix}[{bar}] {pct:3d}% ({current}/{total}) {post}{elapsed:.1f}"
+            line = f"{prefix}[{bar}] {pct:3d}% ({current}/{total}) {post}{eta_str}"
 
         pad = max(self._progress_last_len - len(line), 0)
         out = "\r" + line + (" " * pad)
@@ -231,3 +231,4 @@ if __name__ == "__main__":
         post="Cleaned roll",
         mode="success"
     )
+
