@@ -13,10 +13,15 @@ import json
 import shutil
 import subprocess
 from typing import Iterable, Union
+from debuggerTool import debuggerTool
+
+
 
 DEBUG = False
-ERROR = True
 WARNING = False
+ERROR = True
+db = debuggerTool(DEBUG, WARNING, ERROR)
+
 
 class exposureObj:
     def __init__(self, roll, path):
@@ -36,6 +41,7 @@ class exposureObj:
         # Exposure attributes
         self.index = None           # Exposure index, from filename (dependant on duplicates... TODO)
         self.index_str = None               # Exposure index, string, zfill(2) eg [04]
+        self.dbIdx = None                   # Debug index string, eg [083][12]
         self.index_original = None
         self.location = None                # Location, EXIF
         self.state = None                   # State, EXIF
@@ -126,7 +132,6 @@ class exposureObj:
         if self.roll.isNewCollection:
             n = name.split('_')
             self.index = int(n[2])
-            self.index_str = n[2]
 
         else:
             # Case 1: 22-10-02 Ektar 100 Seebach 1.jpg
@@ -161,6 +166,8 @@ class exposureObj:
                 self.index= None
 
         self.index_original = self.index  # Store original index for later use
+        self.index_str = str(self.index).zfill(2)
+        self.dbIdx = f'{self.roll.dbIdx}[{self.index_str}]'
 
     # Set exif data to image
     def set_exif(self, exif):
@@ -203,13 +210,15 @@ class exposureObj:
 
         # Exposure attributes
         self.location   = self._get_exif(("IPTC", "City"))
+        self.state      = self._get_exif(("IPTC", "Province-State"))
         self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
+        self.verify_location() # hardcode fix for [083][05]
+
         self.stk        = self._get_exif(("XMP-iptcCore", "Scene"))
         self.rating     = self._get_exif(("XMP-xmp", "Rating"), conv=int)
         if self.rating is None:
             self.rating = 0
         self.iso        = self._get_exif(("ExifIFD", "ISO"), conv=int)
-        self.state      = self._get_exif(("IPTC", "Province-State"))
         self.fNumber    = self._get_exif(("ExifIFD", "FNumber"), conv=float)
 
         shutter_str     = self._get_exif(("ExifIFD", "ShutterSpeedValue"))
@@ -523,5 +532,53 @@ class exposureObj:
             img = Image.open(path)
             img.show()
 
+    # Final check and handle hardcoded fixes
+    def verify(self):
+        return
+        
 
+    def verify_location(self):
+        if self.roll.index == 83 and self.index == 5 and self.state is None:
+            path = self.filePath
+            state = "Graubunden"
 
+            subprocess.run(
+                [
+                    "exiftool",
+                    "-overwrite_original",
+                    f"-IPTC:Province-State={state}",
+                    f"-XMP-photoshop:State={state}",
+                    f"-XMP-iptcCore:State={state}",
+                    "-IPTCDigest=",
+                    path,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            # fresh read from disk (inline, no helper)
+            result = subprocess.run(
+                [
+                    "exiftool",
+                    "-s", "-s", "-s",
+                    "-IPTC:Province-State",
+                    "-XMP-photoshop:State",
+                    "-XMP-iptcCore:State",
+                    path,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            # first non-empty line wins
+            for line in result.stdout.splitlines():
+                if line.strip():
+                    self.state = line.strip()
+                    break
+
+        if self.location is None or self.state is None or self.country is None:
+            db.e(self.dbIdx, "Location Error!")
