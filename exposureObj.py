@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import sys
+import tempfile
 import os
 from PIL import Image
 from PIL.ExifTags import TAGS
@@ -519,18 +520,27 @@ class exposureObj:
 
     # Show image PIL with pixel size
     def display(self, size=None):
-        path = self.filePath
+        path = Path(self.filePath).with_name(f"{self.name}.{self.fileType}")
+
         if size:
-            shortest_side = min(self.width, self.height)
-            scale = size / shortest_side
-            new_width = int(self.width * scale)
-            new_height = int(self.height * scale)
             img = Image.open(path)
-            img = img.resize((new_width, new_height), Image.LANCZOS)
-            img.show()
+            shortest = min(img.size)
+            scale = size / shortest
+            new_size = (int(img.width * scale), int(img.height * scale))
+
+            with tempfile.NamedTemporaryFile(
+                suffix=".png",
+                prefix=f"{self.name}_",
+                delete=False,
+            ) as tmp:
+                temp_path = Path(tmp.name)
+
+            img.resize(new_size, Image.LANCZOS).save(temp_path)
+
+            subprocess.run(["open", temp_path])
+
         else:
-            img = Image.open(path)
-            img.show()
+            subprocess.run(["open", path])
 
     # Final check and handle hardcoded fixes
     def verify(self):
