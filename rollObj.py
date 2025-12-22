@@ -70,6 +70,7 @@ class rollObj:
         self.duration = None                        # Roll duration, derived
         self.index = None                           # Roll index, derived from folder name
         self.index_str = None                       # Roll index string, zfill(3) eg 003
+        self.dbIdx = None                           # Debug roll index string, eg [083]
         self.title = None                           # Title for the roll, derived from folder name
         self.containsCopies = None                  # Does roll contain images that are copies of a master? Derived from copy check
         self.cameras = []                         # List of cameras used in the roll, derived
@@ -103,6 +104,7 @@ class rollObj:
         index = int(name.split("_")[0])
         self.index = index
         self.index_str = str(self.index).zfill(3)
+        self.dbIdx = f'[{self.index_str}]'
 
         # Identify jpg/raw dirs
         jpgDirs = []
@@ -810,8 +812,6 @@ class rollObj:
     # Verify attributes on roll and print a summary
     def verify_roll(self):
         for img in self.images:
-            if (img.location is None or img.state is None or img.country is None):
-                db.e(f'[{self.index_str}][{img.index_str}]', 'Unknown location!')
+            img.verify()
             for copy in img.copies:
-                if (copy.location is None or copy.state is None or copy.country is None):
-                    db.e(f'[{self.index_str}][{copy.index_str}]', 'Unknown location!')
+                copy.verify()
