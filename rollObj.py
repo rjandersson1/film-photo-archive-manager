@@ -375,20 +375,25 @@ class rollObj:
 
         # Helper fn to rank master based on if stitched/greyscale
         def master_rank(x):
-            # 1 is better, 0 is worse
             derived_ok = 0 if (x.isStitched or (x.isGrayscale and x.isColor)) else 1
 
-            pixel_area = (x.width or 0) * (x.height or 0)
-            file_size  = x.fileSize or 0
+            ar = float(x.aspectRatio or 0)
+            ar_score = max(
+                0.0 if ar == 0 else -abs(ar - 1.5),
+                0.0 if ar == 0 else -abs(ar - 1.3333),
+                0.0 if ar == 0 else -abs(ar - 1.0),
+            )
 
-            # Choose the highest tuple with max()
+            file_size = x.fileSize or 0
+            mp = x.mpx or 0
+
             return (
-                derived_ok,          # prefer non-derived
-                pixel_area,          # prefer higher resolution (master usually bigger than crop)
-                file_size,           # prefer larger file
-                not x.isSquare,      # prefer not-square (crops often square)
-                -(x.dateCreated.timestamp() if x.dateCreated else 0),  # prefer older if still tied
-                x.fileName or "",    # deterministic final tie-break
+                derived_ok,
+                ar_score,
+                file_size,
+                mp,
+                -(x.dateCreated.timestamp() if x.dateCreated else 0),
+                x.fileName or "",
             )
         
 
