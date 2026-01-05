@@ -213,7 +213,7 @@ class exposureObj:
         self.location   = self._get_exif(("IPTC", "City"))
         self.state      = self._get_exif(("IPTC", "Province-State"))
         self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
-        self.verify_location() # hardcode fix for [083][05]
+        self.verify_location() # hardcode fix for [035][34-35], [083][05]
 
         self.stk        = self._get_exif(("XMP-iptcCore", "Scene"))
         self.rating     = self._get_exif(("XMP-xmp", "Rating"), conv=int)
@@ -548,10 +548,7 @@ class exposureObj:
         
 
     def verify_location(self):
-        if self.roll.index == 83 and self.index == 5 and self.state is None:
-            path = self.filePath
-            state = "Graubunden"
-
+        def update_state(path, state):
             subprocess.run(
                 [
                     "exiftool",
@@ -590,5 +587,26 @@ class exposureObj:
                     self.state = line.strip()
                     break
 
+        if state is None:
+            if self.roll.index == 83 and self.index == 5: # harcode fix
+                path = self.filePath
+                state = "Graubunden"
+                update_state(path, state)
+            if self.roll.index == 45 or self.roll.index == 46: # hardcode fix
+                if self.location is not None:
+                    path = self.filePath
+                    state = self.location
+                    update_state(path, state)
+                
+        
+
+        if self.roll.index == 35 and (self.index == 34 or self.index == 35) and self.state is None:
+                    path = self.filePath
+                    state = "Bologna"
+                    update_state(path, state)
+
         if self.location is None or self.state is None or self.country is None:
-            db.e(self.dbIdx, "Location Error!")
+            if self.location is not None and self.state is None:
+                db.d(self.dbIdx, 'No state given, location error ignored.')
+            else:
+                db.e(self.dbIdx, "Location Error!", f'{self.location}, {self.state}, {self.country}')
