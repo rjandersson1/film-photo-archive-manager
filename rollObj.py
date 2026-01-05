@@ -80,7 +80,7 @@ class rollObj:
         self.filmtype = None                      # Film format, derived from stock info. eg 135, 120, 45, 810
         self.filmformat = None                      # Exposure format, eg 135, 6x7, 6x6, half frame, xpan
 
-    # Main loop
+    # Main loop TODO: pass batch exif processing to roll level to improve runtime.
     def process_roll(self):
         self.process_directory() # get data from folder names
         self.process_images() # fetch all images in the jpgDirs
@@ -199,12 +199,11 @@ class rollObj:
 
         # Print warnings if no jpg/raw files found
         if jpgDirs == []:
-            if ERROR:
-                print(f'[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"} JPG missing')
-                self.images = []
-                return
+            db.e(self.dbIdx, 'JPG missing!')
+            self.images = []
+            return
         if rawDirs == []:
-            db.w(f'[{self.index_str}]', 'Raw missing!')
+            db.w(self.dbIdx, 'Raw missing!')
             self.rawMissing = True
             rawDirs.append(-1)
 
@@ -232,7 +231,7 @@ class rollObj:
         
         if not self.jpgDirs:
             if DEBUG:
-                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} No JPG directories found for roll:\n\t\t{self.name}')
+                db.d(self.dbIdx, 'No JPG dirs found for roll')
             return
 
         if not self.isNewCollection:
@@ -375,24 +374,31 @@ class rollObj:
 
         # Helper fn to rank master based on if stitched/greyscale
         def master_rank(x):
-            derived_ok = 0 if (x.isStitched or (x.isGrayscale and x.isColor)) else 1
+            # 1) grayscale penalty only applies for color images (and not B&W)
+            grayscale_penalty = 0
+            if not x.isBlackAndWhite:
+                if x.isColor and x.isGrayscale:
+                    grayscale_penalty = 1  # worse
+                else:
+                    grayscale_penalty = 0  # better
 
-            ar = float(x.aspectRatio or 0)
-            ar_score = max(
-                0.0 if ar == 0 else -abs(ar - 1.5),
-                0.0 if ar == 0 else -abs(ar - 1.3333),
-                0.0 if ar == 0 else -abs(ar - 1.0),
-            )
+            # 2) pano penalty
+            pano_penalty = 1 if x.isPano else 0
 
-            file_size = x.fileSize or 0
+            # 3) prefer more detail
             mp = x.mpx or 0
+            fs = x.fileSize or 0
 
+            # 4) oldest created wins
+            created_ts = x.dateCreated.timestamp() if x.dateCreated else float("inf")
+
+            # lower tuple is better -> use min(...)
             return (
-                derived_ok,
-                ar_score,
-                file_size,
-                mp,
-                -(x.dateCreated.timestamp() if x.dateCreated else 0),
+                grayscale_penalty,
+                pano_penalty,
+                -mp,
+                -fs,
+                created_ts,
                 x.fileName or "",
             )
         
@@ -425,7 +431,7 @@ class rollObj:
             self.containsCopies = True
 
             # master: best rank -> derived=1 beats derived=0, then newest dateCreated wins
-            master = max(group, key=master_rank)
+            master = min(group, key=master_rank)
             copies = [x for x in group if x is not master]
 
             master.copies = copies
