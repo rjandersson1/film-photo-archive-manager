@@ -204,10 +204,6 @@ class exposureObj:
                 rawPath = os.path.join(rawDir, (str(rawName)+".dng"))
                 if os.path.isfile(rawPath):
                     self.rawFilePath = rawPath
-                else:
-                    if WARNING:
-                        # print(f"\n[{self.roll.index}][{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} No rawDirs or rawFileName available to set rawFilePath for \n\t\t{self.fileName} <-> {self.rawFileName} in {rawPath}")
-                        a=1
 
         # Exposure attributes
         self.location   = self._get_exif(("IPTC", "City"))
@@ -587,7 +583,7 @@ class exposureObj:
                     self.state = line.strip()
                     break
 
-        if state is None:
+        if self.state is None:
             if self.roll.index == 83 and self.index == 5: # harcode fix
                 path = self.filePath
                 state = "Graubunden"

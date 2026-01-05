@@ -5,6 +5,10 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.widgets import SpanSelector, Button
 from datetime import datetime
+import shutil
+import subprocess
+import json
+from time import time
 
 from PIL import Image
 from PIL.ExifTags import TAGS
@@ -488,7 +492,6 @@ class collectionObj:
             plt.tight_layout()
             plt.show()
 
-
     def build_stocklist(self):
         xlsx_path = os.path.join(os.getcwd(), "data", "stocklist.xlsx")
         df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl").fillna("")
@@ -573,9 +576,8 @@ class collectionObj:
             return
 
         new_roll = rollObj(directory=path_roll, collection=self)
-        new_roll.process_roll()
+        new_roll.preprocess_roll()
         self.rolls.append(new_roll)
-
         return
     
     # Identifies collection directory and builds a directory tree
@@ -619,6 +621,19 @@ class collectionObj:
     #   (12,13,15) - imports rolls within the specified range (inclusive)
     #   ('13-18') - imports rolls within the specified range (inclusive)
     def import_rolls(self, rolls):
+        target_indices = self.get_import_indices(rolls)
+        if target_indices == -1 or target_indices is None:
+            return
+
+        for index in target_indices:
+            self.import_roll(index)
+
+        self.batch_fetch_exif(target_indices)
+
+        for roll in self.rolls:
+            roll.process_roll()
+
+    def get_import_indices(self, rolls):
         # Determine target indices based on input type
         if isinstance(rolls, str) and rolls.lower() == 'all': # e.g., 'all'
             target_indices = [int(idx) for idx, _ in self.paths_rolls]
@@ -632,11 +647,73 @@ class collectionObj:
                 target_indices = list(range(start, end + 1))
             except ValueError:
                 print(f"[E]\tInvalid range format: {rolls}. Use 'start-end' format.")
-                return
+                return -1
         else:
             print(f"[E]\tInvalid input for importing rolls: {rolls}")
-            return
+            return -1
+        return target_indices
+
+    def batch_fetch_exif(self, target_indices):
+        pathsToFetch = {}
 
         for index in target_indices:
-            self.import_roll(index)
+            roll = self.getRoll(index)
+            for img in roll.images:
+                if not img.exif:
+                    pathsToFetch[img.filePath] = img
+
+        # Batch fetch exif
+        pathList = pathsToFetch.keys()
+        db.d('[I]', 'Fetching exif...', f'{len(pathList)} images over {len(target_indices)} rolls in ~{len(pathList) * 0.024:.0f}s')
+        t1 = time()
+        data = self.fetch_exif(pathList)
+        t2 = time()
+        dt = t2 - t1
+        db.d('[I]', f'Fetched in {dt:.2f}s', f'{dt/len(pathList):2f}s per img')
+
+        if data is None:
+            db.e('[I]', 'Failed to fetch exif!')
+        
+        # Cast exif back to objects
+        for exif in data:
+            exif_path = exif.get("SourceFile")
+
+            if exif_path not in pathsToFetch:
+                db.e('[I]', "Exif path does not match any image in batch!", f'{exif_path}')
+                continue
+
+            img = pathsToFetch[exif_path]
+
+            # hard assert
+            if exif_path != img.filePath:
+                db.e('[I]', "Exif path does not match any image in batch!", f'Image:\t{img.filePath}\nExif:\t{exif_path}')
+                continue
+
+            # pass exif to image
+            img.set_exif(exif)
+
+    # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
+    def fetch_exif(self, pathList):
+        if shutil.which("exiftool"): # Attempt to open terminal
+            # build command
+            cmd = ["exiftool", "-j"]
+            cmd += ["-a", "-u", "-g1"]
+            cmd += pathList
+
+            # build result
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+
+            # save data
+            data = json.loads(result.stdout or "[]")
+            return data if data else None
+        else:
+            db.e('[I]', 'Failed to open exiftool!')
+            return None
+            
 

@@ -28,7 +28,6 @@ class rollObj:
     def __init__(self, directory, collection):
         self.collection = collection  # Collection object reference
 
-
         # File handling
         self.directory = directory                  # subfolder directory eg. \...\2022 - 135\2_22-06-12 Gold 200 Zurich
         self.name = os.path.basename(directory)     # eg. '2_22-06-12 Gold 200 Zurich'
@@ -80,15 +79,16 @@ class rollObj:
         self.filmtype = None                      # Film format, derived from stock info. eg 135, 120, 45, 810
         self.filmformat = None                      # Exposure format, eg 135, 6x7, 6x6, half frame, xpan
 
-    # Main loop TODO: pass batch exif processing to roll level to improve runtime.
-    def process_roll(self):
+    # Runs preprocessing until exif is required
+    def preprocess_roll(self):
         self.process_directory() # get data from folder names
         self.process_images() # fetch all images in the jpgDirs
+
+    # Main loop: pass batch exif processing to roll level to improve runtime.
+    def process_roll(self):
         if self.images is None or len(self.images) == 0:
             self.images = []
             return
-        self.process_exif() # fetch exif data for all images
-        # self.sort_images() # sort images by exposure number (image.index)
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_metadata() # update film emulsion info for roll and other metadata
         self.verify_roll()
@@ -591,6 +591,9 @@ class rollObj:
 
 
     def update_filmformat(self):
+        if len(self.images) == 0:
+            db.e(self.dbIdx,'No images found!')
+            return
         # Pick first camera (assumes all images on roll are from same camera)
         cameraBrand = self.images[0].cameraBrand
         cameraModel = self.images[0].cameraModel
