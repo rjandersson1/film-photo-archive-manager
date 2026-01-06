@@ -577,6 +577,7 @@ class collectionObj:
 
         new_roll = rollObj(directory=path_roll, collection=self)
         new_roll.preprocess_roll()
+        new_roll.process_roll()
         self.rolls.append(new_roll)
         return
     
@@ -628,11 +629,6 @@ class collectionObj:
         for index in target_indices:
             self.import_roll(index)
 
-        self.batch_fetch_exif(target_indices)
-
-        for roll in self.rolls:
-            roll.process_roll()
-
     def get_import_indices(self, rolls):
         # Determine target indices based on input type
         if isinstance(rolls, str) and rolls.lower() == 'all': # e.g., 'all'
@@ -652,94 +648,3 @@ class collectionObj:
             print(f"[E]\tInvalid input for importing rolls: {rolls}")
             return -1
         return target_indices
-
-    def batch_fetch_exif(self, target_indices):
-        pathsToFetch = {}
-
-        for index in target_indices:
-            roll = self.getRoll(index)
-            for img in roll.images:
-                if not img.exif:
-                    pathsToFetch[img.filePath] = img
-
-        # Batch fetch exif
-        pathList = list(pathsToFetch.keys())
-        db.d('[I]', 'Fetching exif...', f'{len(pathList)} images over {len(target_indices)} rolls in ~{len(pathList) * 0.024:.0f}s')
-        t1 = time()
-        data = self.fetch_exif(pathList)
-        t2 = time()
-        dt = t2 - t1
-        db.d('[I]', f'Fetched in {dt:.2f}s', f'{dt/len(pathList):2f}s per img')
-
-        if data is None:
-            db.e('[I]', 'Failed to fetch exif!')
-        
-        # Cast exif back to objects
-        for exif in data:
-            exif_path = exif.get("SourceFile")
-
-            if exif_path not in pathsToFetch:
-                db.e('[I]', "Exif path does not match any image in batch!", f'{exif_path}')
-                continue
-
-            img = pathsToFetch[exif_path]
-
-            # hard assert
-            if exif_path != img.filePath:
-                db.e('[I]', "Exif path does not match any image in batch!", f'Image:\t{img.filePath}\nExif:\t{exif_path}')
-                continue
-
-            # pass exif to image
-            img.set_exif(exif)
-
-    # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
-    def fetch_exif(self, pathList):
-        if not shutil.which("exiftool"):
-            db.e('[I]', 'Failed to open exiftool!')
-            return None
-
-        if not pathList:
-            return []
-
-        tags = [
-            "-SourceFile",
-            "-XMP-xmpMM:PreservedFileName",
-            "-IPTC:City",
-            "-IPTC:Province-State",
-            "-IPTC:Country-PrimaryLocationName",
-            "-XMP-iptcCore:Scene",
-            "-XMP-xmp:Rating",
-            "-ExifIFD:ISO",
-            "-ExifIFD:FNumber",
-            "-ExifIFD:ShutterSpeedValue",
-            "-ExifIFD:DateTimeOriginal",
-            "-ExifIFD:CreateDate",
-            "-IFD0:Make",
-            "-IFD0:Model",
-            "-ExifIFD:LensMake",
-            "-ExifIFD:LensModel",
-            "-ExifIFD:FocalLength",
-            "-File:ImageWidth",
-            "-File:ImageHeight",
-            "-XMP-crs:ConvertToGrayscale",
-            "-XMP-aux:IsMergedPanorama",
-        ]
-
-        cmd = ["exiftool", "-j", "-g1", "-stay_open"]
-        cmd += ["-fast2"]
-        cmd += tags
-        cmd += pathList
-
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False
-        )
-
-        data = json.loads(result.stdout or "[]")
-        return data if data else None
-
-
-

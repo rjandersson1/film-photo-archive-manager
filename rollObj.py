@@ -16,6 +16,7 @@ from typing import Iterable, Union
 from exposureObj import exposureObj
 from collections import Counter
 from debuggerTool import debuggerTool
+from time import time
 
 DEBUG = 1
 WARNING = True
@@ -89,6 +90,7 @@ class rollObj:
         if self.images is None or len(self.images) == 0:
             self.images = []
             return
+        self.process_exif()
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_metadata() # update film emulsion info for roll and other metadata
         self.verify_roll()
@@ -270,28 +272,64 @@ class rollObj:
         # - cast each exif to the correct object (image.exif = data[i])
         # - call image.update_from_exif() to update image attributes
     def process_exif(self, image=None):
-        if not self.images:
-            if DEBUG:
-                print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} No image obj to process EXIF data for roll:\n\t\t{self.name}')
-            return
-        
-        pathsToFetch = []
+        # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
+        def fetch_exif(self, pathList):
+            if not shutil.which("exiftool"):
+                db.e(self.dbIdx, 'Failed to open exiftool!')
+                return None
+
+            if not pathList:
+                return []
+
+            tags = [
+                "-SourceFile",
+                "-XMP-xmpMM:PreservedFileName",
+                "-IPTC:City",
+                "-IPTC:Province-State",
+                "-IPTC:Country-PrimaryLocationName",
+                "-XMP-iptcCore:Scene",
+                "-XMP-xmp:Rating",
+                "-ExifIFD:ISO",
+                "-ExifIFD:FNumber",
+                "-ExifIFD:ShutterSpeedValue",
+                "-ExifIFD:DateTimeOriginal",
+                "-ExifIFD:CreateDate",
+                "-IFD0:Make",
+                "-IFD0:Model",
+                "-ExifIFD:LensMake",
+                "-ExifIFD:LensModel",
+                "-ExifIFD:FocalLength",
+                "-File:ImageWidth",
+                "-File:ImageHeight",
+                "-XMP-crs:ConvertToGrayscale",
+                "-XMP-aux:IsMergedPanorama",
+            ]
+
+            cmd = ["exiftool", "-j", "-g1", "-stay_open"]
+            cmd += ["-fast2"]
+            cmd += tags
+            cmd += pathList
+
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+
+            data = json.loads(result.stdout or "[]")
+            return data if data else None
+
 
         # If a single image obj was passed, process it
         if image is not None or len(self.images) == 1:
-            if image is None:
-                image = self.images[0]
             if image.exif:
                 return # skip if processed
-            
-            path = image.filePath
-            
-            # Grab exif
-            pathsToFetch.append(path)
-
+            path = list(image.filePath)
             db.d(f'[{self.index_str}]','Fetching EXIF...')
-            exif = self.fetch_exif(pathsToFetch)[0]
-            # cast to back to image
+            data = fetch_exif(self, path)
+            exif = data[0]
             if exif is not None:
                 image.set_exif(exif)
             else:
@@ -300,35 +338,44 @@ class rollObj:
 
         # Else, handle all files in buffer
         else:
-            # Build path fetch list
-            for image in self.images:
-                if image.exif: 
-                    pathsToFetch.append(None) # add empty placeholder to pathlist if already been processed
-                else:
-                    pathsToFetch.append(image.filePath)
-            
-            # Fetch exifs.
-            db.d(f'[{self.index_str}]','Fetching EXIF...')
-            data = self.fetch_exif(pathsToFetch)
+            pathsToFetch = {}
+
+            for img in self.images:
+                if not img.exif:
+                    pathsToFetch[img.filePath] = img
+
+            # Batch fetch exif
+            pathList = list(pathsToFetch.keys())
+            db.d(self.dbIdx, f'Fetching EXIF...')
+            t1 = time()
+            data = fetch_exif(self, pathList)
+            t2 = time()
+            dt = t2 - t1
+            db.d(self.dbIdx, f'Fetched in {dt:.2f}s', f'{dt/len(pathList):2f}s per img')
 
             if data is None:
-                db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED')
+                db.e(self.dbIdx, 'Failed to fetch exif!')
             
-            # Cast data back to image. Assert paths must match!
-            for i in range(len(pathsToFetch)):
-                path = pathsToFetch[i]
-                if not path: continue # skip if path empty; i.e. already been processed
+            # Cast exif back to objects
+            for exif in data:
+                exif_path = exif.get("SourceFile")
 
-                exif = data[i] # single exif data
-                p = exif.get("SourceFile") # original filepath of exif
-                image = self.images[i]
-
-                # Assert path match
-                if p != path:
-                    db.e(f'[{self.index_str}][{image.index_str}]', 'Img path does not match exif source path:', [('Image:', path), ('EXIF', p)])
+                if exif_path not in pathsToFetch:
+                    db.e(self.dbIdx, "Exif path does not match any image in batch!", f'{exif_path}')
                     continue
 
-                image.set_exif(exif) # cast exif to image
+                img = pathsToFetch[exif_path]
+
+                # hard assert
+                if exif_path != img.filePath:
+                    db.e(self.dbIdx, "Exif path does not match any image in batch!", f'Image:\t{img.filePath}\nExif:\t{exif_path}')
+                    continue
+
+                # pass exif to image
+                img.set_exif(exif)
+
+
+
 
     # 5) Order images by exposure number
     def sort_images(self):
@@ -711,31 +758,6 @@ class rollObj:
         # copy = original.get_copy(copyIndex)
         return
 
-    # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
-    def fetch_exif(self, pathList):
-        if shutil.which("exiftool"): # Attempt to open terminal
-            # build command
-            cmd = ["exiftool", "-j"]
-            cmd += ["-a", "-u", "-g1"]
-            cmd += pathList
-
-            # build result
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-
-            # save data
-            data = json.loads(result.stdout or "[]")
-            return data if data else None
-        else:
-            if ERROR:
-                print(f'[{self.index_str}]\t{"\033[35m"}ERROR:{"\033[0m"}: Failed to open exiftool!\n')
-            return None
-        
     # run through locations on roll and choose 1-2 major ones to assign to roll
     def update_locations(self):
         # Prorities:
@@ -758,11 +780,8 @@ class rollObj:
         sorted_locations = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)
         top_locations = [loc[0] for loc in sorted_locations[:2]]
         self.locations = top_locations
-        
-
-
         return
-    
+
 
     def check_for_dupe_raw(self):
         for rawDir in self.rawDirs:
