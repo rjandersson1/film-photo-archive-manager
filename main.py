@@ -90,7 +90,7 @@ print(f'Import completed in {t2 - t1:.2f} seconds.')
 #     contact_sheet.render()
 
 # Example wallpaper generation
-# importer.generate_wallpapers(collection, wallpaper_path, rating_limit=3, size_limit=3)
+# importer.generate_wallpapers(rolls, wallpaper_path, rating_limit=3, size_limit=3)
 
 # Example Clean up library
 # importer.cleanRoll(collection.rolls[0], library_path=None, mode=[1,1,0,1])
@@ -120,8 +120,12 @@ preview_size = 33
 
 
 
+# wallpaper_rolls = []
+# for roll in rolls:
+#     if roll.isBlackAndWhite:
+#         wallpaper_rolls.append(roll)
 
-# importer.generate_wallpapers(collection, wallpaper_path, rating_limit=4, size_limit=2)
+# importer.generate_wallpapers(wallpaper_rolls, wallpaper_path, rating_limit=3, size_limit=2)
 
 
 

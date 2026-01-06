@@ -173,7 +173,7 @@ class importTool:
 
 
     # Copies jpg to dest_folder and adheres to size_limit. Chooses random set of rolls to meet size limit [GB].
-    def generate_wallpapers(self, collection, dest_folder, rating_limit, size_limit):
+    def generate_wallpapers(self, rolls, dest_folder, rating_limit, size_limit):
         # create dir if not exist
         if not os.path.exists(dest_folder):
             os.makedirs(dest_folder)
@@ -195,7 +195,7 @@ class importTool:
         total_size = 0
 
         # Randomize roll order
-        rolls = collection.rolls.copy()
+        rolls = rolls.copy()
         random.shuffle(rolls)
 
         # Iterate through rolls and images to select based on rating and size limit

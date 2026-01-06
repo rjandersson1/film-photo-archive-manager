@@ -663,7 +663,7 @@ class collectionObj:
                     pathsToFetch[img.filePath] = img
 
         # Batch fetch exif
-        pathList = pathsToFetch.keys()
+        pathList = list(pathsToFetch.keys())
         db.d('[I]', 'Fetching exif...', f'{len(pathList)} images over {len(target_indices)} rolls in ~{len(pathList) * 0.024:.0f}s')
         t1 = time()
         data = self.fetch_exif(pathList)
@@ -694,26 +694,52 @@ class collectionObj:
 
     # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
     def fetch_exif(self, pathList):
-        if shutil.which("exiftool"): # Attempt to open terminal
-            # build command
-            cmd = ["exiftool", "-j"]
-            cmd += ["-a", "-u", "-g1"]
-            cmd += pathList
-
-            # build result
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-
-            # save data
-            data = json.loads(result.stdout or "[]")
-            return data if data else None
-        else:
+        if not shutil.which("exiftool"):
             db.e('[I]', 'Failed to open exiftool!')
             return None
-            
+
+        if not pathList:
+            return []
+
+        tags = [
+            "-SourceFile",
+            "-XMP-xmpMM:PreservedFileName",
+            "-IPTC:City",
+            "-IPTC:Province-State",
+            "-IPTC:Country-PrimaryLocationName",
+            "-XMP-iptcCore:Scene",
+            "-XMP-xmp:Rating",
+            "-ExifIFD:ISO",
+            "-ExifIFD:FNumber",
+            "-ExifIFD:ShutterSpeedValue",
+            "-ExifIFD:DateTimeOriginal",
+            "-ExifIFD:CreateDate",
+            "-IFD0:Make",
+            "-IFD0:Model",
+            "-ExifIFD:LensMake",
+            "-ExifIFD:LensModel",
+            "-ExifIFD:FocalLength",
+            "-File:ImageWidth",
+            "-File:ImageHeight",
+            "-XMP-crs:ConvertToGrayscale",
+            "-XMP-aux:IsMergedPanorama",
+        ]
+
+        cmd = ["exiftool", "-j", "-g1", "-stay_open"]
+        cmd += ["-fast2"]
+        cmd += tags
+        cmd += pathList
+
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False
+        )
+
+        data = json.loads(result.stdout or "[]")
+        return data if data else None
+
+
 
