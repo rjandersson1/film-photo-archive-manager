@@ -4,10 +4,11 @@ __pycache__/
 *.pyc
 
 # Ignore big/local data trees
-data/archive/
-data/filmCollection/
-data/filmCollectionTestAll/
-data/photography/
+data/
+#data/archive/
+#data/filmCollection/
+#data/filmCollectionTestAll/
+#data/photography/
 
 # Global media ignores (apply everywhere)
 *.ARW
@@ -28,16 +29,16 @@ data/photography/
 # --- Exceptions: keep some data subfolders tracked even if they contain images ---
 
 # 1) Unignore the directories themselves (and their parents if needed)
-!data/
-!data/example\ metadata/
-!data/film_rebates/
-!data/rebates/
+#!data/
+#!data/example\ metadata/
+#!data/film_rebates/
+#!data/rebates/
 
 # 2) Unignore everything under those directories
-!data/example\ metadata/**
+#!data/example\ metadata/**
 
-!data/film_rebates/**
-!data/rebates/**
+#!data/film_rebates/**
+#!data/rebates/**
 
 # 3) Re-ignore media only inside those directories if you actually want to exclude them there too.
 # (Leave these commented out if you want JPGs etc tracked inside the exceptions.)

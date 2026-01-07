@@ -359,7 +359,7 @@ class rollObj:
 
         cmd = ["exiftool", "-j", "-g1", "-stay_open"]
         cmd += ["-fast2"]
-        cmd += tags
+        # cmd += tags
         cmd += pathList
         
         result = subprocess.run(

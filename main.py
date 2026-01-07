@@ -117,7 +117,7 @@ for roll in rolls:
             if display_preview: img.display(preview_size)
             for copy in img.copies:
                 if display_preview: copy.display(preview_size)
-                print(f'\t\tCOPY\t{copy.name}\t{copy.copyType}\t{copy.rawFileName}\t{copy.fileSize/1024/1024:.2f}Mb\t{copy.mpx:.2f}MP\t{copy.aspectRatio:.2f}:1\tfilm_col:{img.isColor}\tfilm_bw:{img.isBlackAndWhite}\tgrey:{img.isGrayscale}')
+                print(f'\t\tCOPY\t{copy.name}\t{copy.copyType}\t{copy.rawFileName}\t{copy.fileSize/1024/1024:.2f}Mb\t{copy.mpx:.2f}MP\t{copy.aspectRatio:.2f}:1\tfilm_col:{copy.isColor}\tfilm_bw:{copy.isBlackAndWhite}\tgrey:{copy.isGrayscale}')
             print('\n')
 
 roll = collection.getRoll(67)
@@ -126,19 +126,13 @@ p_img = img.filePath
 copy = img.copies[0]
 p_copy = copy.filePath
 
-# img.getInfo()
-# copy.getInfo()
-
-paths = list([p_img, p_copy]) 
+paths = list([p_img, p_copy])
 data = roll.fetch_exif(paths)
 
 e_img = data[0]
 e_copy = data[1]
 
-print(e_img,'\n')
-print(e_copy)
-
-
+print(e_img, '\n'*5, e_copy)
 
 # wallpaper_rolls = []
 # for roll in rolls:
