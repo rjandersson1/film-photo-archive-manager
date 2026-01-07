@@ -346,12 +346,12 @@ class rollObj:
 
             # Batch fetch exif
             pathList = list(pathsToFetch.keys())
-            db.d(self.dbIdx, f'Fetching EXIF...')
+            # db.d(self.dbIdx, f'Fetching EXIF...')
             t1 = time()
             data = fetch_exif(self, pathList)
             t2 = time()
             dt = t2 - t1
-            db.d(self.dbIdx, f'Fetched in {dt:.2f}s', f'{dt/len(pathList):2f}s per img')
+            db.d(self.dbIdx, f'Fetched in EXIF {dt:.2f}s', f'{dt/len(pathList)*1000:0f}ms per img')
 
             if data is None:
                 db.e(self.dbIdx, 'Failed to fetch exif!')
