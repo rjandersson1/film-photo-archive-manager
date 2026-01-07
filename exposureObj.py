@@ -256,6 +256,15 @@ class exposureObj:
         self.isGrayscale = self._get_exif(("XMP-crs", "ConvertToGrayscale"),
                                         conv=lambda v: bool(int(v)) if str(v).isdigit() else bool(v),
                                         default=False)
+        
+
+        # debugging =================
+        if self.isGrayscale:
+            print(f'{self.index} greyscale???')
+
+
+
+        # debugging ============
         self.isStitched  = self._get_exif(("XMP-aux", "IsMergedPanorama"),
                                         conv=bool,
                                         default=False)

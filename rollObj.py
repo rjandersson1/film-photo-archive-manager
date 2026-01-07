@@ -272,63 +272,13 @@ class rollObj:
         # - cast each exif to the correct object (image.exif = data[i])
         # - call image.update_from_exif() to update image attributes
     def process_exif(self, image=None):
-        # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
-        def fetch_exif(self, pathList):
-            if not shutil.which("exiftool"):
-                db.e(self.dbIdx, 'Failed to open exiftool!')
-                return None
-
-            if not pathList:
-                return []
-
-            tags = [
-                "-SourceFile",
-                "-XMP-xmpMM:PreservedFileName",
-                "-IPTC:City",
-                "-IPTC:Province-State",
-                "-IPTC:Country-PrimaryLocationName",
-                "-XMP-iptcCore:Scene",
-                "-XMP-xmp:Rating",
-                "-ExifIFD:ISO",
-                "-ExifIFD:FNumber",
-                "-ExifIFD:ShutterSpeedValue",
-                "-ExifIFD:DateTimeOriginal",
-                "-ExifIFD:CreateDate",
-                "-IFD0:Make",
-                "-IFD0:Model",
-                "-ExifIFD:LensMake",
-                "-ExifIFD:LensModel",
-                "-ExifIFD:FocalLength",
-                "-File:ImageWidth",
-                "-File:ImageHeight",
-                "-XMP-crs:ConvertToGrayscale",
-                "-XMP-aux:IsMergedPanorama",
-            ]
-
-            cmd = ["exiftool", "-j", "-g1", "-stay_open"]
-            cmd += ["-fast2"]
-            cmd += tags
-            cmd += pathList
-
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-
-            data = json.loads(result.stdout or "[]")
-            return data if data else None
-
-
         # If a single image obj was passed, process it
         if image is not None or len(self.images) == 1:
             if image.exif:
                 return # skip if processed
             path = list(image.filePath)
             db.d(f'[{self.index_str}]','Fetching EXIF...')
-            data = fetch_exif(self, path)
+            data = self.fetch_exif(path)
             exif = data[0]
             if exif is not None:
                 image.set_exif(exif)
@@ -348,10 +298,10 @@ class rollObj:
             pathList = list(pathsToFetch.keys())
             # db.d(self.dbIdx, f'Fetching EXIF...')
             t1 = time()
-            data = fetch_exif(self, pathList)
+            data = self.fetch_exif(pathList)
             t2 = time()
             dt = t2 - t1
-            db.d(self.dbIdx, f'Fetched in EXIF {dt:.2f}s', f'{dt/len(pathList)*1000:0f}ms per img')
+            db.d(self.dbIdx, f'Fetched in EXIF {dt:.2f}s', f'{dt/len(pathList)*1000:.0f}ms per img')
 
             if data is None:
                 db.e(self.dbIdx, 'Failed to fetch exif!')
@@ -374,7 +324,54 @@ class rollObj:
                 # pass exif to image
                 img.set_exif(exif)
 
+    # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
+    def fetch_exif(self, pathList):
+        if not shutil.which("exiftool"):
+            db.e(self.dbIdx, 'Failed to open exiftool!')
+            return None
 
+        if not pathList:
+            return []
+
+        tags = [
+            "-SourceFile",
+            "-XMP-xmpMM:PreservedFileName",
+            "-IPTC:City",
+            "-IPTC:Province-State",
+            "-IPTC:Country-PrimaryLocationName",
+            "-XMP-iptcCore:Scene",
+            "-XMP-xmp:Rating",
+            "-ExifIFD:ISO",
+            "-ExifIFD:FNumber",
+            "-ExifIFD:ShutterSpeedValue",
+            "-ExifIFD:DateTimeOriginal",
+            "-ExifIFD:CreateDate",
+            "-IFD0:Make",
+            "-IFD0:Model",
+            "-ExifIFD:LensMake",
+            "-ExifIFD:LensModel",
+            "-ExifIFD:FocalLength",
+            "-File:ImageWidth",
+            "-File:ImageHeight",
+            "-XMP-crs:ConvertToGrayscale",
+            "-XMP-aux:IsMergedPanorama",
+        ]
+
+        cmd = ["exiftool", "-j", "-g1", "-stay_open"]
+        cmd += ["-fast2"]
+        cmd += tags
+        cmd += pathList
+        
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False
+        )
+
+        data = json.loads(result.stdout or "[]")
+        return data if data else None
 
 
     # 5) Order images by exposure number

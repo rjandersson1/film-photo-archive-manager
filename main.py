@@ -9,7 +9,8 @@
 # 20-30 good, had to rework copy finding on [25] but works now
 # 30-40 needs work, [35] bologna works now, but only bc I have changed #99 for all VCs. 32 as misidentified 4 as master to 3. Reworked copy finding. [035][34] and [035][35] have location issues (fixed).
 # 40-50 good, [45][46] both don't have states given (sweden/denmark). Added clause for if location but !state, then ignore location err. TODO: set state to location as fallback?
-# 50-60
+# 50-60 good
+# 60-70 good, [65] and [66] missing jpg but expected. [67][7] wrong master/copy rel. [68][02] wrong master/copy
 import numpy as np
 import pandas as pd
 import sys
@@ -37,11 +38,11 @@ importlib.reload(importTool)
 # ======================== Setup Vars ================================
 DEVMODE = 0         # If true, work in local dir. If false, work in production dir. Contains rolls 72, 74, 83, 85
 
-rolls_to_import = 'all'
+# rolls_to_import = 'all'
 # rolls_to_import = [72, 74, 83, 85]
 # rolls_to_import = [74]
-# rolls_to_import = '35-40'
-# rolls_to_import = [45]
+# rolls_to_import = '65-70'
+rolls_to_import = [67]
 
 # deine wallpaper path
 wallpaper_path = r'/Users/rja/Documents/Wallpapers/wallpapers-1'
@@ -105,18 +106,37 @@ for i in range(3):
 rolls = collection.rolls
 
 display_preview = 0
-preview_size = 33
+preview_size = 500
 
-# for roll in rolls:
-#     for img in roll.images:
-#         if img.containsCopies:
-#             print(f'[{img.roll.index_str}][{img.index_str}]\t{img.copyCount}x')
-#             print(f'\t\tMASTER\t{img.name}\t{img.copyType}\t{img.rawFileName}\t{img.fileSize/1024/1024:.2f}Mb\t{img.mpx:.2f}MP\t{img.aspectRatio:.2f}:1')
-#             if display_preview: img.display(preview_size)
-#             for copy in img.copies:
-#                 if display_preview: copy.display(preview_size)
-#                 print(f'\t\tCOPY\t{copy.name}\t{copy.copyType}\t{copy.rawFileName}\t{copy.fileSize/1024/1024:.2f}Mb\t{copy.mpx:.2f}MP\t{copy.aspectRatio:.2f}:1')
-#             print('\n')
+for roll in rolls:
+    for img in roll.images:
+        if img.index == 10: continue
+        if img.containsCopies:
+            print(f'[{img.roll.index_str}][{img.index_str}]\t{img.copyCount}x')
+            print(f'\t\tMASTER\t{img.name}\t{img.copyType}\t{img.rawFileName}\t{img.fileSize/1024/1024:.2f}Mb\t{img.mpx:.2f}MP\t{img.aspectRatio:.2f}:1\tfilm_col:{img.isColor}\tfilm_bw:{img.isBlackAndWhite}\tgrey:{img.isGrayscale}')
+            if display_preview: img.display(preview_size)
+            for copy in img.copies:
+                if display_preview: copy.display(preview_size)
+                print(f'\t\tCOPY\t{copy.name}\t{copy.copyType}\t{copy.rawFileName}\t{copy.fileSize/1024/1024:.2f}Mb\t{copy.mpx:.2f}MP\t{copy.aspectRatio:.2f}:1\tfilm_col:{img.isColor}\tfilm_bw:{img.isBlackAndWhite}\tgrey:{img.isGrayscale}')
+            print('\n')
+
+roll = collection.getRoll(67)
+img = roll.getImage(7)
+p_img = img.filePath
+copy = img.copies[0]
+p_copy = copy.filePath
+
+# img.getInfo()
+# copy.getInfo()
+
+paths = list([p_img, p_copy]) 
+data = roll.fetch_exif(paths)
+
+e_img = data[0]
+e_copy = data[1]
+
+print(e_img,'\n')
+print(e_copy)
 
 
 
