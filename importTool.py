@@ -172,6 +172,25 @@ class importTool:
             self.copy_jpg(img, dest_folder)
 
 
+    def generate_wallpapers_bw(self, rolls, dest_folder, rating_limit, size_limit):
+        wallpaper_rolls = []
+        for roll in rolls:
+            if roll.index in [47, 72, 81]: continue
+            if roll.isBlackAndWhite:
+                wallpaper_rolls.append(roll)
+        
+        self.generate_wallpapers(wallpaper_rolls, dest_folder, rating_limit, size_limit)
+    
+    def generate_wallpapers_color(self, rolls, dest_folder, rating_limit, size_limit):
+        wallpaper_rolls = []
+        for roll in rolls:
+            if roll.index in [47, 72, 81]: continue
+            if roll.isColor:
+                wallpaper_rolls.append(roll)
+        
+        self.generate_wallpapers(wallpaper_rolls, dest_folder, rating_limit, size_limit)
+
+
     # Copies jpg to dest_folder and adheres to size_limit. Chooses random set of rolls to meet size limit [GB].
     def generate_wallpapers(self, rolls, dest_folder, rating_limit, size_limit):
         # create dir if not exist
@@ -199,7 +218,9 @@ class importTool:
         random.shuffle(rolls)
 
         # Iterate through rolls and images to select based on rating and size limit
+        selected_rolls = []
         for roll in rolls:
+            selected_rolls.append(roll.index)
             images = roll.images.copy()
             for img in images:
                 if img.rating >= rating_limit:
@@ -218,7 +239,7 @@ class importTool:
             if total_size >= size_limit:
                 break
         
-        print(f'Selected {len(selected)} images with total size {total_size / (1024*1024*1024):.2f} GB for wallpapers.')
+        db.i('[Wallpaper] ', f'Selected {len(selected)} images from {len(selected_rolls)} rolls, totalling {total_size / (1024*1024*1024):.2f} GB.', f'{selected_rolls}')
 
         # Copy into dest_folder
         for img in selected:
