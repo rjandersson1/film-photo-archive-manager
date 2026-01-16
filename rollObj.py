@@ -36,6 +36,7 @@ class rollObj:
         self.rawDirs = None                         # Path to folder with raw files
         self.rawMissing = None                      # Flag for whether raw files could be found
         self.images = None                          # List of ExposureMetadata objects, derived
+        self.images_all = []                        # List of all ExposureMetadata objects including copies, derived
         self.unmatched_raws = None                 # List of unmatched raw files after verification, derived
         self.isNewCollection = False                  # if searching using new collection formatting
 
@@ -91,8 +92,8 @@ class rollObj:
             self.images = []
             return
         self.process_exif()
-        self.process_copies() # check for copies and nest them in the master copy object
         self.update_metadata() # update film emulsion info for roll and other metadata
+        self.process_copies() # check for copies and nest them in the master copy object
         self.verify_roll()
 
     # 2) Identify filepaths & gather directory data
@@ -108,104 +109,22 @@ class rollObj:
         self.index_str = str(self.index).zfill(3)
         self.dbIdx = f'[{self.index_str}]'
 
-        # Identify jpg/raw dirs
-        jpgDirs = []
-        rawDirs = []
 
-        # search new structure
-        new_rawDir = os.path.join(dir, '01_scans')
-        new_jpgDir = os.path.join(dir, '02_exports')
-        new_copyDir = os.path.join(dir, '04_edits')
-        new_rawDir_backups = os.path.join(dir, '05_other','01_unmatched_raws')
-        if os.path.isdir(new_jpgDir):
-            self.isNewCollection = True
-            jpgDirs.append(new_jpgDir)
+        self.find_image_dirs()
 
-            # Check in 01_scans
-            if os.path.isdir(new_rawDir):
-                contains_files = 0
-                for file in os.listdir(new_rawDir):
-                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
-                        contains_files = 1
-                if contains_files:
-                    self.rawMissing = False
-                    rawDirs.append(new_rawDir)
-            
-            # Check in 05_other/01_unmatched_raws
-            if os.path.isdir(new_rawDir_backups):
-                contains_files = 0
-                for file in os.listdir(new_rawDir_backups):
-                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
-                        contains_files = 1
-                if contains_files:
-                    self.rawMissing = False
-                    rawDirs.append(new_rawDir_backups)
-
-            # Check copies
-            if os.path.isdir(new_copyDir):
-                jpgDirs.append(new_copyDir)
-
-        # Revert to old approach
-        else:
-            # Search main directory
-            for file in os.listdir(dir):
-                path = os.path.join(dir, file)
-                # Skip if a file
-                if os.path.isfile(path): continue
-
-                # Check main directory for jpg or raw files
-                for file in os.listdir(dir):
-                    if file.lower().endswith('.jpg') or file.lower().endswith('.png'):
-                        jpgDirs.append(dir)
-                        break
-                for file in os.listdir(dir):
-                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
-                        rawDirs.append(dir)
-                        break
-            
-            # Search subdirs (only one tier)
-            for file in os.listdir(dir):
-                path = os.path.join(dir, file)
-                # Skip if a file
-                if os.path.isfile(path): continue
-
-                # search through subdirs
-                for file in os.listdir(path):
-                    # Warn if contains subsubdirs
-                    conditions_ignore = (
-                        file == "Scene" or
-                        file == "Camera"
-                    )
-                    if conditions_ignore: continue
-                    if WARNING and os.path.isdir(os.path.join(path,file)):
-                        print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} additional subfolders in image directory:\n\t\t"{file}" in {path}')
-
-                    conditions = (
-                        file.lower().endswith('.jpg') or
-                        file.lower().endswith('.png')
-                    )
-                    conditions_ignore = (
-                        file == "Scene" or
-                        file == "Camera"
-                    )
-                    # print("[",index,'] ', conditions, conditions_ignore)
-                    if conditions:
-                        if conditions_ignore:
-                            continue
-                        jpgDirs.append(path)
-                        break
-                for file in os.listdir(path):
-                    if file.lower().endswith('.arw') or file.lower().endswith('.dng'):
-                        rawDirs.append(path)
-                        break
 
         # Print warnings if no jpg/raw files found
+        jpgDirs = self.jpgDirs
+        rawDirs = self.rawDirs
         if jpgDirs == []:
-            db.e(self.dbIdx, 'JPG missing!')
+            if rawDirs == []:
+                db.e(self.dbIdx, 'RAW+JPG missing!')
+            else:
+                db.e(self.dbIdx, 'JPG missing, but RAW exists!')
             self.images = []
             return
-        if rawDirs == []:
-            db.w(self.dbIdx, 'Raw missing!')
+        elif rawDirs == []:
+            db.w(self.dbIdx, 'RAW missing, but JPG exists!')
             self.rawMissing = True
             rawDirs.append(-1)
 
@@ -213,7 +132,7 @@ class rollObj:
         if len(jpgDirs) > 1 and not self.isNewCollection:
             db.w(f'[{self.index_str}]',f'{len(jpgDirs)} JPG dirs found!')
         if len(rawDirs) > 1 and not self.isNewCollection:
-            db.w(f'[{self.index_str}]',f'{len(rawDirs)} RAW dirs found!')
+            db.w(f'[{self.index_str}]',f'{len(rawDirs)} RAW dirs found!', rawDirs)
 
         # Update attributes
         if len(jpgDirs): self.jpgDirs = jpgDirs 
@@ -225,25 +144,133 @@ class rollObj:
         if self.jpgDirs is None:
             self.images = []
         return
+
+
+    def find_image_dirs(self):
+        # search new structure
+        dir = self.directory
+        new_rawDir = os.path.join(dir, '01_scans')
+        new_jpgDir = os.path.join(dir, '02_exports')
+        new_copyDir = os.path.join(dir, '04_edits')
+        new_rawDir_backups = os.path.join(dir, '05_other','01_unmatched_raws')
+        if not os.path.isdir(new_jpgDir): # return if identified as old legacy folder structure
+            self.find_image_dirs_legacy()
+            return
+        
+        # Identify jpg/raw dirs
+        jpgDirs = []
+        rawDirs = []
+        
+        self.isNewCollection = True
+        jpgDirs.append(new_jpgDir)
+
+        # Check in 01_scans
+        if os.path.isdir(new_rawDir):
+            contains_files = 0
+            for file in os.listdir(new_rawDir):
+                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                    contains_files = 1
+            if contains_files:
+                self.rawMissing = False
+                rawDirs.append(new_rawDir)
+        
+        # Check in 05_other/01_unmatched_raws
+        if os.path.isdir(new_rawDir_backups):
+            contains_files = 0
+            for file in os.listdir(new_rawDir_backups):
+                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                    contains_files = 1
+            if contains_files:
+                self.rawMissing = False
+                rawDirs.append(new_rawDir_backups)
+
+        # Check copies
+        if os.path.isdir(new_copyDir):
+            jpgDirs.append(new_copyDir)
+
+        self.jpgDirs = jpgDirs
+        self.rawDirs = rawDirs
+        return
     
+    def find_image_dirs_legacy(self):
+        jpgDirs = []
+        rawDirs = []
+        dir = self.directory
+        # Search main directory
+        for file in os.listdir(dir):
+            path = os.path.join(dir, file)
+            # Skip if a file
+            if os.path.isfile(path): continue
+
+            # Check main directory for jpg or raw files
+            for file in os.listdir(dir):
+                if file.lower().endswith('.jpg') or file.lower().endswith('.png'):
+                    if dir not in jpgDirs:
+                        jpgDirs.append(dir)
+                    break
+            for file in os.listdir(dir):
+                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                    if dir not in rawDirs:
+                        rawDirs.append(dir)
+                    break
+        
+        # Search subdirs (only one tier)
+        for file in os.listdir(dir):
+            path = os.path.join(dir, file)
+            # Skip if a file
+            if os.path.isfile(path): continue
+
+            # search through subdirs
+            for file in os.listdir(path):
+                # Warn if contains subsubdirs
+                conditions_ignore = (
+                    file == "Scene" or
+                    file == "Camera"
+                )
+                if conditions_ignore: continue
+                if os.path.isdir(os.path.join(path,file)):
+                    db.w(self.dbIdx, 'Additional subfolder found in image directory!', f'"{file}" in {path}')
+
+                conditions = (
+                    file.lower().endswith('.jpg') or
+                    file.lower().endswith('.png')
+                )
+                conditions_ignore = (
+                    file == "Scene" or
+                    file == "Camera"
+                )
+                # print("[",index,'] ', conditions, conditions_ignore)
+                if conditions:
+                    if conditions_ignore:
+                        continue
+                    if path not in jpgDirs:
+                        jpgDirs.append(path)
+                    break
+            for file in os.listdir(path):
+                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                    if path not in rawDirs:
+                        rawDirs.append(path)
+                    break
+
+        self.jpgDirs = jpgDirs
+        self.rawDirs = rawDirs
+
     # 3) Process all image directories and generate ExposureMetadata objects
     # Only process files that are explicitly valid (e.g. skip '5mb' folders or misnamed files)
     def process_images(self):
         images = []
         
         if not self.jpgDirs:
-            if DEBUG:
-                db.d(self.dbIdx, 'No JPG dirs found for roll')
             return
 
         if not self.isNewCollection:
+            filtered_jpgDirs = []
             for dir_path in self.jpgDirs:
                 dir_name = os.path.basename(dir_path).lower()
 
                 # Skip directories with '5mb' or '5mp' in the name
                 if '5mb' in dir_name or '5mp' in dir_name:
-                    if DEBUG:
-                        print(f'[{self.index_str}]\t{"\033[33m"}DEBUG:{"\033[0m"} Skipping directory with "5mb"/"5mp" in name:\n\t\t{dir_path}')
+                    db.d(self.dbIdx, 'Skipping 5mb/5mp jpg folder')
                     continue
 
                 # Warn if directory name does not include 'jpg' or 'jpeg'
@@ -251,6 +278,8 @@ class rollObj:
                     if WARNING:
                         print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} Folder name might not indicate valid JPG content:\n\t\t{dir_path}')
                     continue
+                filtered_jpgDirs.append(dir_path)
+            self.jpgDirs = filtered_jpgDirs
 
         # Process valid image files
         for dir_path in self.jpgDirs:
@@ -359,7 +388,7 @@ class rollObj:
 
         cmd = ["exiftool", "-j", "-g1", "-stay_open"]
         cmd += ["-fast2"]
-        # cmd += tags
+        cmd += tags
         cmd += pathList
         
         result = subprocess.run(
@@ -394,14 +423,16 @@ class rollObj:
         # Sort images by index
         self.images.sort(key=lambda img: img.index)
         self.reindex_images()
+        self.build_images_all()
 
     # 6) Handle copies
         # Check through images to see if any have identical image.dateExposed.
         # If yes, build a list of each group of duplicate objects: list[0] == master copy. Sort by image.dateCreated. Oldest is the master.
         # Handle copies by nesting them in the master copy object.
+        # TODO: fix bug where stock attributes are derived after process_copies, but used in process copies. Need to refactor and rework updateFilmMetadata to occur beforehand, and then certain things like copy-relevant stuff needs to occur after the copies are processed.
     def process_copies(self):
         # Hardcode skip for rolls 6 and 12
-        if self.index in (6,12):
+        if self.index in (6,12,68):
             db.w(f'[{self.index_str}]', 'Skipping copy check on roll (hardcode workaround)', self.index_str)
             self.containsCopies = False
             for img in self.images:
@@ -411,6 +442,8 @@ class rollObj:
                 img.copyCount = 0
                 img.copies = []
                 img.original = img
+            self.verify_raw_files()
+            self.sort_images()
             return
 
         # -------- Step 0: initialize and reset attributes --------
@@ -437,7 +470,7 @@ class rollObj:
             created_ts = x.dateCreated.timestamp() if x.dateCreated else float("inf")
 
             # lower tuple is better -> use min(...)
-            return (
+            ranking = (
                 grayscale_penalty,
                 pano_penalty,
                 -mp,
@@ -445,6 +478,7 @@ class rollObj:
                 created_ts,
                 x.fileName or "",
             )
+            return ranking
         
 
         for img in self.images:
@@ -511,15 +545,16 @@ class rollObj:
         # -------- Step 5: Verify and sort --------
         self.verify_raw_files()
         self.sort_images()
+        for img in self.images:
+            for copy in img.copies:
+                copy.update_copy_type()
 
     # 7) Update final film-specific metadata
     def update_metadata(self):
         self.update_filmformat()
         self.update_stock_metadata()
+        self.update_file_metadata()
         self.update_locations()
-        for img in self.images:
-            for copy in img.copies:
-                copy.update_copy_type()
 
     # Update stock-related attributes using first image STK to identify stock among collection stock list.
     def update_stock_metadata(self):
@@ -583,6 +618,7 @@ class rollObj:
                 print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} multiple cameras found in roll: {self.cameras}')
 
 
+    def update_file_metadata(self):
         # Cast date attributes
         self.startDate = self.images[0].dateExposed
         self.endDate = self.images[-1].dateExposed
@@ -624,16 +660,6 @@ class rollObj:
                 self.countCopies += 1
                 self.countAll = self.countAll + 1
 
-
-        
-        # Check to confirm dateExposed increases with index
-        # date_increasing = True
-        for i in range(1, len(self.images)):
-            if self.images[i].dateExposed < self.images[i-1].dateExposed:
-                db.w(f'[{self.index_str}]', 'dateExposed not increasing with index between exposures', f'[{self.images[i-1].index}] {self.images[i-1].dateExposed.time()} > {self.images[i].dateExposed.time()} [{self.images[i].index}]')
-                break
-
-
     def update_filmformat(self):
         if len(self.images) == 0:
             db.e(self.dbIdx,'No images found!')
@@ -666,9 +692,8 @@ class rollObj:
                     camfound = True
                     break
 
-        if WARNING and not camfound:
-            print(f'\n[{self.index_str}]\t\033[31mWARNING:\033[0m '
-                f'cam not in cameralist:\n\t\t"brand:{cameraBrand} model:{cameraModel}"')
+        if not camfound:
+            db.e(self.dbIdx, f'Cam not in cameralist:', f'({cameraBrand},{cameraModel})')
 
         # Push attributes to all images
         for image in self.images:
@@ -699,12 +724,19 @@ class rollObj:
         return selected
 
     def reindex_images(self):
-
         for img in self.images:
             for copy in img.copies:
                 copy.index_str = str(copy.index).zfill(2)
             img.index_str = str(img.index).zfill(2)
 
+    def build_images_all(self):
+        self.images_all = []
+        for img in self.images:
+            self.images_all.append(img)
+            for copy in img.copies:
+                self.images_all.append(copy)
+        # Sort images_all by index
+        self.images_all.sort(key=lambda img: (img.index))
 
 
 
@@ -800,7 +832,7 @@ class rollObj:
         if self.rawDirs and self.rawDirs[0] != -1:
             for rawDir in self.rawDirs:
                 for file in os.listdir(rawDir):
-                    if file.lower().endswith(('.arw', '.dng')):
+                    if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
                         raw_filenames.add(file)
 
         # Walk through all images and copies and ensure raw file exists. If exists, remove from set. Print remaining unmatched raws at end.
@@ -818,7 +850,8 @@ class rollObj:
                 if copy_rawName in unmatched_raws:
                     unmatched_raws.discard(copy_rawName)
                 else:
-                    if copy.isPano:
+                    if copy.isPano and copy.isStitched:
+
                         # find corresponding pano raw file: eg match DSC01694.ARW <--> DSC01694-pano.dng
                         base_name = os.path.splitext(copy_rawName)[0]+'-Pano'
                         pano_raw_candidates = [f for f in raw_filenames if f.startswith(base_name) and '-Pano' in os.path.splitext(f)[0]]
@@ -830,12 +863,7 @@ class rollObj:
                             unmatched_raws.discard(new_raw_name)
                             db.d(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
                         else:
-                            db.e(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName}')
-                    # else:
-                    #     if self.rawDirs is not None or self.countRaw is not None:
-                    #         print(self.countRaw)
-                    #         db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for copy:', f'{copy_rawName}')
-                    # [REMOVED AS VC WILL ALWAYS SHARE THE SAME RAW FILE UNLESS THEY ARE STITCHED PANORAMAS]
+                            db.e(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName} ({copy.original.mpx:.0f},{copy.mpx:.0f})MP at ({copy.original.aspectRatio:.2f},{copy.aspectRatio:.2f}):1 --> copy.isStitched={copy.isStitched}')
 
                     
 
@@ -853,7 +881,27 @@ class rollObj:
 
     # Verify attributes on roll and print a summary
     def verify_roll(self):
+        # Check to confirm dateExposed increases with index
+        # date_increasing = True
+        for i in range(1, len(self.images)):
+            if self.images[i].dateExposed < self.images[i-1].dateExposed:
+                db.w(f'[{self.index_str}]', 'dateExposed not increasing with index between exposures', f'[{self.images[i-1].index}] {self.images[i-1].dateExposed.time()} > {self.images[i].dateExposed.time()} [{self.images[i].index}]')
+                break
         for img in self.images:
             img.verify()
             for copy in img.copies:
                 copy.verify()
+
+        camera_error = 0
+        camera_error_idx = []
+        for img in self.images:
+            if img.cameraBrand in [None, 'SONY'] or img.cameraModel in [None, 'DSLR-A550']:
+                camera_error = 1
+                camera_error_idx.append(img.index)
+            for copy in img.copies:
+                if copy.cameraBrand in [None, 'SONY'] or copy.cameraModel in [None, 'DSLR-A550']:
+                    camera_error = 1
+                    camera_error_idx.append(copy.index)
+        if camera_error:
+            db.e(self.dbIdx, 'Camera attribute cast error!')
+        
