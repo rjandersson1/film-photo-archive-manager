@@ -2,6 +2,8 @@ import numpy as np
 import time
 import sys
 
+# TODO: handle cases when none is passed, methods will crash on NoneType at the moment
+
 class debuggerTool:
 
     def __init__(self, on_debug=1, on_warning=1, on_error=1):
@@ -48,6 +50,12 @@ class debuggerTool:
             self.debug('warning', pre, post, data)
 
     def debug(self, mode, pre, post, data=None):
+        # Handle NoneType
+        if pre is None:
+            pre = ''
+        if post is None:
+            post = ''
+        
         max_pre_length = 9  # [999][999]
         spaces_after = max(max_pre_length + 2 - len(pre), 0)
         pre_padded = pre + ' ' * spaces_after
