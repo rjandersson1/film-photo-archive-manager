@@ -27,7 +27,8 @@ db = debuggerTool(DEBUG, WARNING, ERROR)
 
 class collectionObj:
     def __init__(self, directory):
-        db.i('[I]', 'Importing collection...')
+        self.dbIdx = '[I]'
+        db.i(self.dbIdx, 'Importing collection...')
         # Initialize FilmCollection with a base directory
         self.directory = directory
         self.paths_rolls = [] # List of tuples (index, folder_path) for each roll
@@ -137,7 +138,7 @@ class collectionObj:
     # Imports rolls
     def _import_rolls(self):
         for directory in self.subdirectories:
-            db.i('[I]', f'Importing from...', [directory])
+            db.i(self.dbIdx, f'Importing from...', [directory])
             self.add_rolls_from_directory(directory)
 
     # Indexes and sorts a list of filepaths
@@ -563,7 +564,7 @@ class collectionObj:
 
     # From directory list, imports specific roll (via index XXX)
     def import_roll(self, index):
-        db.i('[I]', f'Importing roll:', index)
+        db.i(self.dbIdx, f'Importing roll:', index)
 
         # Find the path for the specified index in self.paths_rolls
         path_roll = None
@@ -572,7 +573,7 @@ class collectionObj:
                 path_roll = path
                 break
         if path_roll is None:
-            db.w('[I]', f'Roll not found in the collection:', index)
+            db.w(self.dbIdx, f'Roll not found in the collection:', index)
             return
 
         new_roll = rollObj(directory=path_roll, collection=self)
@@ -592,9 +593,9 @@ class collectionObj:
                 paths_years.append(os.path.join(path_library, path))
 
         # Index folders from each year
+        paths_rolls = []
         for path_year in paths_years:
             folders = os.listdir(path_year)
-            paths_rolls = []
             for folder in folders:
                 folder_path = os.path.join(path_year, folder)
                 if os.path.isdir(folder_path):
@@ -605,12 +606,12 @@ class collectionObj:
                     paths_rolls = sorted(paths_rolls, key=lambda x: int(x[0]))
                     pass
             
-            self.paths_rolls = paths_rolls
+        self.paths_rolls = paths_rolls
 
         if len(self.paths_rolls) == 0:
-            db.w('[I]', 'No rolls found in the library directory:', path_library)
+            db.w(self.dbIdx, 'No rolls found in the library directory:', path_library)
         else:
-            db.d('[I]', f'Library with {len(self.paths_rolls)} rolls identified', [self.paths_rolls[0], '...', self.paths_rolls[-1]])
+            db.i(self.dbIdx, f'Library with {len(self.paths_rolls)} rolls identified', [self.paths_rolls[0], '...', self.paths_rolls[-1]])
 
 
         return
@@ -627,6 +628,7 @@ class collectionObj:
             return
 
         for index in target_indices:
+
             self.import_roll(index)
 
     def get_import_indices(self, rolls):
