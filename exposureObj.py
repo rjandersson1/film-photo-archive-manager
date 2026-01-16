@@ -141,8 +141,9 @@ class exposureObj:
                 try:
                     self.index= int(n[-1])
                 except Exception:
-                    if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [1] Could not get exposure index from:\n\t\t{name}')
+                    db.e(self.roll.dbIdx, 'IDX identify error! Case (1)', name)
                     self.index= None
+                    return
 
             # Case 2: 22-07-28 - 1 - Flims - Superia 400 -  - 5s.jpg
             elif ' - ' in name and '#' not in name:
@@ -150,7 +151,7 @@ class exposureObj:
                 try:
                     self.index= int(n[1])
                 except Exception:
-                    if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [2] Could not get exposure index from:\n\t\t{name}')
+                    db.e(self.roll.dbIdx, 'IDX indetify error! Case (2)', name)
                     self.index= None
         
 
@@ -160,10 +161,10 @@ class exposureObj:
                 try:
                     self.index= int(n[-1].split('#')[-1])
                 except Exception:
-                    if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [3] Could not get exposure index from:\n\t\t{name}')
+                    db.e(self.roll.dbIdx, 'IDX indetify error! Case (3)', name)
                     self.index= None
             else:
-                if ERROR: print(f'[{self.roll.index}]\t{"\033[35m"}ERROR:{"\033[0m"} [E] Could not get exposure index from:\n\t\t{name}')
+                db.e(self.roll.dbIdx, 'IDX indetify error! Case (-1)', name)
                 self.index= None
 
         self.index_original = self.index  # Store original index for later use
@@ -243,7 +244,7 @@ class exposureObj:
         self.lens        = f"{self.lensBrand}f{self.lensModel}" if self.lensBrand and self.lensModel else ''
         self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0] if self.lensModel and '/' in self.lensModel else ''
 
-        # todo: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
+        # TODO: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
         self.focalLength = self._get_exif(("ExifIFD", "FocalLength"),
                                         conv=lambda v: float(v.split(" ")[0]) if v else None)
         self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if self.focalLength and self.maxAperture else ''
@@ -540,8 +541,81 @@ class exposureObj:
 
     # Final check and handle hardcoded fixes
     def verify(self):
+        self.verify_camera()
         return
+
+    # Hardcode fix to update camera exif error on rolls [33, ...]
+    def verify_camera(self):
+        def update_camera(self, make, model, path):
+            # write
+            subprocess.run(
+                [
+                    "exiftool",
+                    "-overwrite_original",
+                    f"-IFD0:Make={make}",
+                    f"-IFD0:Model={model}",
+                    "-IPTCDigest=",
+                    path,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            # read back (values only, one per line, in the same order as requested)
+            result = subprocess.run(
+                [
+                    "exiftool",
+                    "-s", "-s", "-s",
+                    "-IFD0:Make",
+                    "-IFD0:Model",
+                    path,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+            if len(lines) >= 2:
+                self.cameraBrand = lines[0]
+                self.cameraModel = lines[1]
+            else:
+                raise RuntimeError(f"Unexpected exiftool output:\n{result.stdout}\n{result.stderr}")
+
+        if self.roll.index == 33:
+            new_make = 'Minolta'
+            new_model = 'Maxxum 7000'
+            if self.cameraBrand == 'SONY' or self.cameraModel == 'DSLR-A550':
+                db.e(self.dbIdx, 'Updating exif: camera model error', f'({new_make}, {new_model})')
+                update_camera(self, new_make, new_model, self.filePath)
         
+        if self.roll.index == 36:
+            new_make = 'Nikon'
+            new_model = 'F3 - Skye'
+            if self.cameraBrand == 'SONY' or self.cameraModel == 'DSLR-A550':
+                db.e(self.dbIdx, 'Updating exif: camera model error', f'({new_make}, {new_model})')
+                update_camera(self, new_make, new_model, self.filePath)
+
+        if self.roll.index == 41:
+            new_make = 'Minolta'
+            new_model = 'x700 - Skye'
+            if self.cameraBrand == 'SONY' or self.cameraModel == 'DSLR-A550':
+                db.e(self.dbIdx, 'Updating exif: camera model error', f'({new_make}, {new_model})')
+                update_camera(self, new_make, new_model, self.filePath)
+        
+        if self.roll.index == 78:
+            new_make = 'Rollei'
+            new_model = '35S'
+            if self.cameraBrand == None or self.cameraModel == None:
+                db.e(self.dbIdx, 'Updating exif: camera model error', f'({new_make}, {new_model})')
+                update_camera(self, new_make, new_model, self.filePath)
+
+
+
+ 
 
     def verify_location(self):
         def update_state(path, state):
@@ -593,6 +667,10 @@ class exposureObj:
                     path = self.filePath
                     state = self.location
                     update_state(path, state)
+        
+        if self.roll.index == 8 and self.location is None: # hardcode fix for [8]:[20]&[21]
+            if self.state is not None:
+                self.location = self.state
                 
         
 
