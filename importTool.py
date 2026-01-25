@@ -9,6 +9,7 @@ import random
 from debuggerTool import debuggerTool
 from time import time
 from PIL import Image
+import renderTool
 
 DEBUG = 1
 WARNING = 1
@@ -63,7 +64,6 @@ class importTool:
         dest_path = os.path.join(dest_folder, img.rawFileName)
 
         if src_path is None:
-            # db.e(f'[{img.roll.index}][{img.index_str}]', 'No RAW file path found for image. Cannot copy RAW.')
             return
 
 
@@ -244,15 +244,15 @@ class importTool:
         # Copy into dest_folder
         for img in selected:
             self.copy_jpg(img, dest_folder)
-
         return
 
 
     # Cleans up a roll by copying jpg and raw files to correct folder within library
-    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1]):
+    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1,0]):
+        if roll.index in [37]: return
         t1 = time()
 
-        db.i(f'[{roll.index_str}]', 'Cleaning roll...')
+        db.i(roll.dbIdx, 'Cleaning roll:', f'{roll.countAll + roll.countRaw} files, {roll.sizeAll / (1024*1024):.0f}MB: {roll.countRaw} RAW, {roll.countJpg} JPG: {roll.countExposures} Exp, {roll.countCopies} Copies.')
 
         if library_path is None:
             library_path = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography'
@@ -293,6 +293,11 @@ class importTool:
         edits_path = os.path.join(roll_base_path, '04_edits')
         other_path = os.path.join(roll_base_path, '05_other')
         unmatchedRAW_path = os.path.join(other_path, '01_unmatched_raws')
+        contact_sheets_path = os.path.join(other_path, '02_contact_sheets')
+
+        # Warn about raw files missing
+        if roll.rawMissing:
+            db.e(roll.dbIdx, f'RAW files missing!')
 
         # init progress bar
         total_length = len(roll.images) * mode[0] + len(roll.images) * mode[1] + len(roll.images) * mode[2] + roll.countCopies * mode[3]
@@ -300,15 +305,14 @@ class importTool:
         
         # Copy to directories
         for img in roll.images:
-
             # Copy raw if exists to scans
-            if mode[0]:
+            if mode[0] and img.rawFilePath:
                 progress_index += 1
                 db.progress(
                     pre=f"[{index}]",
                     current=progress_index,
                     total=total_length,
-                    post=f"[{img.index_str}] Copying jpg...",
+                    post=f"[{img.index_str}] Copying RAW...",
                     mode="info"
                 )
                 self.copy_raw(img, scans_path)
@@ -320,7 +324,7 @@ class importTool:
                     pre=f"[{index}]",
                     current=progress_index,
                     total=total_length,
-                    post=f"[{img.index_str}] Copying RAW...",
+                    post=f"[{img.index_str}] Copying JPG...",
                     mode="info"
                 )
                 self.copy_jpg(img, exports_path)
@@ -350,12 +354,19 @@ class importTool:
                     )
                     self.copy_jpg(copy, edits_path)
                     self.copy_preview(copy, previews_path)
-            
+
 
         # copy over leftover raw files just in case
         if mode[0]:
             self.copy_unmatched_raws(roll, unmatchedRAW_path)
 
+        # Render contact sheets
+        if mode[4]:
+            save_path = os.path.join(contact_sheets_path, f"{roll.index_str}_contact_sheet.png")
+            if not os.path.exists(contact_sheets_path):
+                os.makedirs(contact_sheets_path)
+            contact_sheet = renderTool.Renderer(roll)
+            contact_sheet.render(save_path=save_path, show=True)
         t2 = time()
         db.progress(
             pre=f"[{index}]",
