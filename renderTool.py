@@ -30,8 +30,11 @@ class Renderer:
         self.fontColor = self.roll.fontColor
         self.rebate_size = None
         self.film_size = None
+        self.save_path = None
 
-    def render(self):
+    
+
+    def render(self, save_path=None, show=True):
         # 1. prepare layout + assets
         self.load_format()
 
@@ -51,7 +54,13 @@ class Renderer:
         self.render_header()
 
         # 5. Show
-        self.canvas.show()
+        if show:
+            self.canvas.show()
+        
+        # 6. Save
+        if save_path:
+            self.canvas.save(save_path)
+            
 
     # Loads film format (35mm, 6x7 etc)
     def load_format(self):
