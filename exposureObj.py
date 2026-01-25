@@ -18,9 +18,9 @@ from debuggerTool import debuggerTool
 
 
 
-DEBUG = False
-WARNING = False
-ERROR = True
+DEBUG = 0
+WARNING = 0
+ERROR = 1
 db = debuggerTool(DEBUG, WARNING, ERROR)
 
 
@@ -139,9 +139,13 @@ class exposureObj:
             if ' - ' not in name:
                 n = name.split(' ') # [22-10-02, Ektar, 100, Seebach, 1]
                 try:
+                    if n[-1] == '1-2': # hardcode fix for [009] 22-08-23 Portra 800 Zug 1-2.jpg
+                        n[-1] = 1
                     self.index= int(n[-1])
+                    if self.roll.index == 9 and self.index > 1: # hardcode fix for roll 9, indexes shifted by 1
+                        self.index += 1 # shift all indices by 1
                 except Exception:
-                    db.e(self.roll.dbIdx, 'IDX identify error! Case (1)', name)
+                    db.e(self.roll.dbIdx, 'IDX identify error! Case (1)', f'{name} --> {n[-1]}')
                     self.index= None
                     return
 
@@ -151,7 +155,7 @@ class exposureObj:
                 try:
                     self.index= int(n[1])
                 except Exception:
-                    db.e(self.roll.dbIdx, 'IDX indetify error! Case (2)', name)
+                    db.e(self.roll.dbIdx, 'IDX identify error! Case (2)', f'{name} --> {n[1]}')
                     self.index= None
         
 
@@ -161,10 +165,10 @@ class exposureObj:
                 try:
                     self.index= int(n[-1].split('#')[-1])
                 except Exception:
-                    db.e(self.roll.dbIdx, 'IDX indetify error! Case (3)', name)
+                    db.e(self.roll.dbIdx, 'IDX identify error! Case (3)', f'{name} --> {n[-1].split("#")[-1]}')
                     self.index= None
             else:
-                db.e(self.roll.dbIdx, 'IDX indetify error! Case (-1)', name)
+                db.e(self.roll.dbIdx, 'IDX identify error! Case (-1)', f'{name} --> ???')
                 self.index= None
 
         self.index_original = self.index  # Store original index for later use
@@ -189,7 +193,7 @@ class exposureObj:
         # File attributes
         self.rawFileName = self._get_exif(("XMP-xmpMM", "PreservedFileName"))
         if self.roll.index == 12:
-            print(f'\n[{self.index}]\t{"\033[31m"}WARNING:{"\033[0m"} hardcode workaround --> renaming exif-filename from .ARW to .dng to match raw files')
+            db.w(self.dbIdx, 'hardcode workaround --> renaming exif-filename from .ARW to .dng to match raw files')
             self.rawFileName = self.rawFileName.split(".")[0]+".dng"
 
 
@@ -675,9 +679,9 @@ class exposureObj:
         
 
         if self.roll.index == 35 and (self.index == 34 or self.index == 35) and self.state is None:
-                    path = self.filePath
-                    state = "Bologna"
-                    update_state(path, state)
+            path = self.filePath
+            state = "Bologna"
+            update_state(path, state)
 
         if self.location is None or self.state is None or self.country is None:
             if self.location is not None and self.state is None:
