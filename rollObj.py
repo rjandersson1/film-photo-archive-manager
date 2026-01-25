@@ -18,10 +18,9 @@ from collections import Counter
 from debuggerTool import debuggerTool
 from time import time
 
-DEBUG = 1
-WARNING = True
-ERROR = True
-
+DEBUG = 0
+WARNING = 1
+ERROR = 1
 db = debuggerTool(DEBUG, WARNING, ERROR) 
 
 
@@ -94,6 +93,7 @@ class rollObj:
         self.process_exif()
         self.update_metadata() # update film emulsion info for roll and other metadata
         self.process_copies() # check for copies and nest them in the master copy object
+        self.update_file_metadata()
         self.verify_roll()
 
     # 2) Identify filepaths & gather directory data
@@ -168,7 +168,7 @@ class rollObj:
         if os.path.isdir(new_rawDir):
             contains_files = 0
             for file in os.listdir(new_rawDir):
-                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
                     contains_files = 1
             if contains_files:
                 self.rawMissing = False
@@ -178,7 +178,7 @@ class rollObj:
         if os.path.isdir(new_rawDir_backups):
             contains_files = 0
             for file in os.listdir(new_rawDir_backups):
-                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
                     contains_files = 1
             if contains_files:
                 self.rawMissing = False
@@ -209,7 +209,7 @@ class rollObj:
                         jpgDirs.append(dir)
                     break
             for file in os.listdir(dir):
-                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
                     if dir not in rawDirs:
                         rawDirs.append(dir)
                     break
@@ -247,7 +247,7 @@ class rollObj:
                         jpgDirs.append(path)
                     break
             for file in os.listdir(path):
-                if file.lower().endswith('.arw') or file.lower().endswith('.dng') or file.lower().endswith('.tif') or file.lower().endswith('.tiff'):
+                if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
                     if path not in rawDirs:
                         rawDirs.append(path)
                     break
@@ -284,7 +284,7 @@ class rollObj:
         # Process valid image files
         for dir_path in self.jpgDirs:
             for file in os.listdir(dir_path):
-                if file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                if file.lower().endswith(('.jpg', '.jpeg', '.png')) and not file.startswith('._'):
                     file_path = os.path.join(dir_path, file)
                     image = exposureObj(self, file_path)
                     images.append(image)
@@ -551,9 +551,9 @@ class rollObj:
 
     # 7) Update final film-specific metadata
     def update_metadata(self):
+        self.build_images_all()
         self.update_filmformat()
         self.update_stock_metadata()
-        self.update_file_metadata()
         self.update_locations()
 
     # Update stock-related attributes using first image STK to identify stock among collection stock list.
@@ -583,40 +583,19 @@ class rollObj:
             print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}"')
 
         # Cast metadata back to all images (if no STK found, casts None and throws warning)
-        for image in self.images:
+        for image in self.images_all:
             image.stock = self.stock
             image.boxspeed = self.boxspeed
             image.stk = self.stk
-            image.cam = self.cam
             image.process = self.process
             image.isColor = self.isColor
             image.isBlackAndWhite = self.isBlackAndWhite
             image.isInfrared = self.isInfrared
             image.isNegative = self.isNegative
             image.isSlide = self.isSlide
-            if image.cam not in self.cameras:
-                self.cameras.append(image.cam)
-            
-            # handle copies
-            for copy in image.copies:
-                copy.stock = self.stock
-                copy.boxspeed = self.boxspeed
-                copy.stk = self.stk
-                copy.cam = self.cam
-                copy.process = self.process
-                copy.isColor = self.isColor
-                copy.isBlackAndWhite = self.isBlackAndWhite
-                copy.isInfrared = self.isInfrared
-                copy.isNegative = self.isNegative
-                copy.isSlide = self.isSlide
-                if copy.cam not in self.cameras:
-                    self.cameras.append(copy.cam)
             
         if len(self.cameras) > 1:
-            # print warning saying multiple cameras for one roll
-            if WARNING:
-                print(f'[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} multiple cameras found in roll: {self.cameras}')
-
+            db.w(self.dbIdx, 'Multiple cameras found in roll:', self.cameras)
 
     def update_file_metadata(self):
         # Cast date attributes
@@ -625,7 +604,7 @@ class rollObj:
         self.duration = (self.endDate - self.startDate).days + 1
         
         # Cast file data attributes
-        self.sizeAll = shutil.disk_usage(self.directory).used
+        self.sizeAll = 0
         self.sizeJpg = 0
         self.countJpg = 0
         if self.jpgDirs:
@@ -640,17 +619,19 @@ class rollObj:
         if self.rawDirs and self.rawDirs[0] != -1:
             for dir in self.rawDirs:
                 for file in os.listdir(dir):
-                    if file.lower().endswith(('.arw', '.dng')):
+                    if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
                         file_path = os.path.join(dir, file)
                         self.sizeRaw += os.path.getsize(file_path)
                         self.countRaw += 1
         
+        self.sizeAll = self.sizeJpg + self.sizeRaw
+
         self.sizeExposures = 0
         self.sizeCopies = 0 
         self.countAll = 0
         self.countExposures = 0
         self.countCopies = 0
-        for img in self.images:
+        for img in self.images_all:
             if img.isOriginal:
                 self.sizeExposures += img.fileSize
                 self.countExposures += 1
@@ -662,46 +643,66 @@ class rollObj:
 
     def update_filmformat(self):
         if len(self.images) == 0:
-            db.e(self.dbIdx,'No images found!')
+            db.e(self.dbIdx, "No images found!")
             return
-        # Pick first camera (assumes all images on roll are from same camera)
-        cameraBrand = self.images[0].cameraBrand
-        cameraModel = self.images[0].cameraModel
+
+        # Build unique (brand, model) pairs from the roll
+        camera_pairs = []
+        seen = set()
+        for img in self.images_all:
+            b = img.cameraBrand
+            m = img.cameraModel
+            if b is None or m is None:
+                continue
+            key = (str(b).strip(), str(m).strip())
+            if key not in seen:
+                seen.add(key)
+                camera_pairs.append(key)
+
+        # print([b for b, _ in camera_pairs], [m for _, m in camera_pairs])
 
         self.filmtype = None
         self.filmformat = None
-        camfound = False
+        self.cam = None
 
-        if cameraBrand and cameraModel:
-            # Normalize (case-insensitive, strip spaces)
-            brand = str(cameraBrand).strip().lower()
-            model = str(cameraModel).strip().lower()
+        for brand_raw, model_raw in camera_pairs:
+            brand = brand_raw.strip().lower()
+            model = model_raw.strip().lower()
 
             # EDGE CASE
             if "skye" in model:
-                model = model.split(" - ")[0]
+                model = model.split(" - ")[0].strip()
+
+            camfound = False
 
             for cam in self.collection.cameralist.values():
                 cbrand = (cam.get("brand") or "").strip().lower()
                 cmodel = (cam.get("model") or "").strip().lower()
 
                 if brand == cbrand and model == cmodel:
-                    self.filmtype = cam.get("filmtype")
-                    self.filmformat = cam.get("filmformat")
-                    self.cam = cam.get("id")
+                    filmtype = cam.get("filmtype")
+                    filmformat = cam.get("filmformat")
+                    cam_id = cam.get("id")
+
+                    # Apply only to matching images
+                    camera_key = str(f'{brand_raw} {model_raw}')
+                    self.cameras.append(camera_key)
+                    for img in self.images_all:
+                        if (img.cameraBrand is not None and img.cameraModel is not None) and (img.camera == camera_key):
+                            img.filmtype = filmtype
+                            img.filmformat = filmformat
+                            img.cam = cam_id
+
+                    # Store roll-level fields (if you want last match to win)
+                    self.filmtype = filmtype
+                    self.filmformat = filmformat
+                    self.cam = cam_id
+
                     camfound = True
-                    break
+                    break  # stop searching cameralist for this pair
 
-        if not camfound:
-            db.e(self.dbIdx, f'Cam not in cameralist:', f'({cameraBrand},{cameraModel})')
-
-        # Push attributes to all images
-        for image in self.images:
-            image.filmtype = self.filmtype
-            image.filmformat = self.filmformat
-            for copy in image.copies:
-                copy.filmtype = self.filmtype
-                copy.filmformat = self.filmformat
+            if not camfound:
+                db.e(self.dbIdx, "Cam not in cameralist:", f"({brand_raw},{model_raw})")
 
     # filter images by rating
     def filter_by_rating(self, stars, logic, include_copies=False):
@@ -737,26 +738,6 @@ class rollObj:
                 self.images_all.append(copy)
         # Sort images_all by index
         self.images_all.sort(key=lambda img: (img.index))
-
-
-
-
-
-
-# for img in self.images:
-#     key = img.dateExposed
-
-#     # Build dict of copies if date key matches
-#     if key not in copies_dict:
-#         copies_dict[key] = []
-#     copies_dict[key].append(img)
-
-# self.containsCopies = False
-# for group in copies_dict.values():
-#     if len(group) > 1:
-
-
-
 
 
 
