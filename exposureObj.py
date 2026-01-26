@@ -38,6 +38,7 @@ class exposureObj:
         self.rawFilePath = None       # Raw file path, derived TODO: grab from self.roll.rawPaths and search for matching filenames
         self.previewFilePath = None   # Preview file path, derived TODO
         self.attributesFile = {}
+        self.newFileName = None
 
         # Exposure attributes
         self.index = None           # Exposure index, from filename (dependant on duplicates... TODO)
@@ -186,9 +187,7 @@ class exposureObj:
     # Updates image attributes from EXIF.
     def _update_from_exif(self):
         if not self.exif:
-            if ERROR:
-                print(f"[{self.roll.index}] [{self.index}] ERROR: No EXIF data available for {self.fileName}")
-            return
+            db.e(self.dbIdx, "No EXIF data available")
 
         # File attributes
         self.rawFileName = self._get_exif(("XMP-xmpMM", "PreservedFileName"))
@@ -546,7 +545,40 @@ class exposureObj:
     # Final check and handle hardcoded fixes
     def verify(self):
         self.verify_camera()
+        self.get_new_name()
         return
+    
+
+    def get_new_name(self):
+        # Define new file naming convention
+        #[roll index]_[YYMMDD]_[index]_[stk]_[location]_[cam]_[lns]_[rating]
+        roll_index = str(self.roll.index).zfill(3)
+        date = self.dateExposed
+        index = self.index
+        stk = self.stk
+        cam = self.cam
+        lns = self.lns
+        location = self.location
+        if location is None:
+            location = self.state
+            if location is None:
+                location = self.country
+        rating = self.rating
+
+        date_str = date.strftime('%y%m%d') if date is not None else '??????'
+        index_str = f"{int(index):02d}" if index is not None else '??'
+
+        # handle VC
+        base_name = f"{roll_index}_{date_str}_{index_str}_{stk}_{location}_{cam}_{lns}_{rating}s"
+
+        if self.isCopy:
+            new_name = f"{base_name}_{self.copyType}"
+        else:
+            new_name = f"{base_name}"
+
+        self.newFileName = new_name
+
+        return new_name
 
     # Hardcode fix to update camera exif error on rolls [33, ...]
     def verify_camera(self):
