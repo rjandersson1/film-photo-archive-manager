@@ -38,6 +38,7 @@ class rollObj:
         self.images_all = []                        # List of all ExposureMetadata objects including copies, derived
         self.unmatched_raws = None                 # List of unmatched raw files after verification, derived
         self.isNewCollection = False                  # if searching using new collection formatting
+        self.exif = None                           # Roll-level exif data, imported
 
         # File data TODO
         self.sizeAll = None                         # Total size of roll, derived
@@ -50,6 +51,7 @@ class rollObj:
         self.countRaw = None                        # Count of raw files, derived
         self.countExposures = None                  # Count of exposures, derived
         self.countCopies = None                     # Count of copies, derived
+        
 
         # Film stock attributes
         self.manufacturer = None
@@ -327,7 +329,44 @@ class rollObj:
             pathList = list(pathsToFetch.keys())
             # db.d(self.dbIdx, f'Fetching EXIF...')
             t1 = time()
-            data = self.fetch_exif(pathList)
+
+            # check if exif path exists, then fetch json if so
+            exif_path = os.path.join(self.directory, '05_other/01_exif/exif_072.json')
+            if os.path.isfile(exif_path):
+                data = self.fetch_exif_json(exif_path)
+                # replace all 'SourceFile' with img.filePath
+                for newImg in self.images:
+                    newPath = newImg.filePath
+                    newName = os.path.basename(newPath).split('.jpg')[0]
+
+                    if newName not in data:
+                        continue
+
+                    exif = data[newName]
+
+                    # make a copy so we don’t mutate cached data
+                    exif = dict(exif)
+
+                    # update SourceFile to current correct path
+                    data[newName]['SourceFile'] = newPath
+
+                # flatten data
+                data_list = []
+
+                for exif in data.values():
+                    if isinstance(exif, dict):
+                        data_list.append(exif)
+
+                # optional: deterministic order by SourceFile
+                try:
+                    data_list.sort(key=lambda d: d.get('SourceFile', ''))
+                except Exception:
+                    pass
+
+                data = data_list
+                    
+            else:
+                data = self.fetch_exif(pathList)
             t2 = time()
             dt = t2 - t1
             db.d(self.dbIdx, f'Fetched in EXIF {dt:.2f}s', f'{dt/len(pathList)*1000:.0f}ms per img')
@@ -355,6 +394,9 @@ class rollObj:
 
     # generate exiftool command and run it. returns list of data[i] with each item being exif data for that path
     def fetch_exif(self, pathList):
+
+        # check if fetch exists
+
         if not shutil.which("exiftool"):
             db.e(self.dbIdx, 'Failed to open exiftool!')
             return None
@@ -400,7 +442,124 @@ class rollObj:
         )
 
         data = json.loads(result.stdout or "[]")
+
+
+
+        # print('\n'*100)
+
+        # print(data[1])
+
+        # print('\n'*10)
+
         return data if data else None
+    
+    def fetch_exif_json(self, path):
+        # path can be file or directory
+        if path is None:
+            return None
+        path = str(path)
+
+        json_path = path
+        if os.path.isdir(json_path):
+            fname = f'exif_{self.index_str}.json' if getattr(self, 'index_str', None) else 'exif.json'
+            json_path = os.path.join(json_path, fname)
+
+        if not os.path.exists(json_path):
+            return None
+
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return None
+
+        # New format: dict[newFileName] -> exif_dict
+        if isinstance(data, dict):
+            return data
+
+        # Old format: list of exif dicts
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+
+        # Old single dict edge case
+        if isinstance(data, dict):
+            return data
+
+        return None
+    
+    def export_exif_json(self, folder_path):
+        """Export roll EXIF cache as dict[newFileName] -> exif_dict."""
+        if folder_path is None:
+            db.e(self.dbIdx, 'export_exif_json: folder_path is None')
+            return None
+
+        try:
+            folder_path = str(folder_path)
+            os.makedirs(folder_path, exist_ok=True)
+        except Exception as e:
+            db.e(self.dbIdx, 'export_exif_json: failed to create folder', f'{folder_path} ({e})')
+            return None
+
+        if not self.images_all:
+            db.w(self.dbIdx, 'export_exif_json: no images_all to export')
+            return None
+
+        cache = {}
+        skipped = 0
+        dupes = 0
+
+        for img in self.images_all:
+            exif = getattr(img, 'exif', None)
+            if not exif:
+                continue
+
+            if not isinstance(exif, dict):
+                try:
+                    exif = json.loads(exif)
+                except Exception:
+                    skipped += 1
+                    continue
+
+            key = getattr(img, 'newFileName', None)
+            if not key:
+                # If you don’t always have newFileName populated yet, fall back to basename(filePath)
+                key = os.path.basename(getattr(img, 'filePath', '') or '')
+            if not key:
+                skipped += 1
+                continue
+
+            # Store exif dict as-is (keep original SourceFile; you’ll override on load)
+            if key in cache:
+                dupes += 1
+            cache[key] = exif
+
+        if len(cache) == 0:
+            db.w(self.dbIdx, 'export_exif_json: no populated EXIF found to export')
+            return None
+
+        if dupes:
+            db.w(self.dbIdx, 'export_exif_json: duplicate keys overwritten', dupes)
+        if skipped:
+            db.w(self.dbIdx, 'export_exif_json: skipped entries', skipped)
+
+        out_name = f'exif_{self.index_str}.json' if self.index_str else 'exif.json'
+        out_path = os.path.join(folder_path, out_name)
+
+        tmp_path = out_path + '.tmp'
+        try:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump(cache, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, out_path)
+        except Exception as e:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            db.e(self.dbIdx, 'export_exif_json: failed to write json', f'{out_path} ({e})')
+            return None
+
+        return out_path
 
 
     # 5) Order images by exposure number
@@ -579,8 +738,9 @@ class rollObj:
                 self.fontPath = stock['font'] # 'fonts/Impact Label Reversed.ttf'
                 self.fontColor = tuple(map(int, stock['color'].split(','))) # '252, 194, 180, 255' --> tuple(rgba)
                 stkFound = True
-        if WARNING and not stkFound:
-            print(f'\n[{self.index_str}]\t{"\033[31m"}WARNING:{"\033[0m"} stk not in stocklist:\n\t\t"{key}"')
+
+        if not stkFound:
+            db.w(self.dbIdx, f"stk not found in stocklist:", f'"{key}"')
 
         # Cast metadata back to all images (if no STK found, casts None and throws warning)
         for image in self.images_all:
