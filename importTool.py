@@ -23,31 +23,32 @@ class importTool:
     
     # Opens a roll from a path and checks to confirm validity
     def get_photo_name(self, img):
-        # Define new file naming convention
-        #[roll index]_[YYMMDD]_[index]_[stk]_[location]_[cam]_[lns]_[rating]
-        roll_index = str(img.roll.index).zfill(3)
-        date = img.dateExposed
-        index = img.index
-        stk = img.stk
-        cam = img.cam
-        lns = img.lns
-        location = img.location
-        if location is None:
-            location = img.state
-            if location is None:
-                location = img.country
-        rating = img.rating
+        new_name = img.newFileName
+        # # Define new file naming convention
+        # #[roll index]_[YYMMDD]_[index]_[stk]_[location]_[cam]_[lns]_[rating]
+        # roll_index = str(img.roll.index).zfill(3)
+        # date = img.dateExposed
+        # index = img.index
+        # stk = img.stk
+        # cam = img.cam
+        # lns = img.lns
+        # location = img.location
+        # if location is None:
+        #     location = img.state
+        #     if location is None:
+        #         location = img.country
+        # rating = img.rating
 
-        date_str = date.strftime('%y%m%d') if date is not None else '??????'
-        index_str = f"{int(index):02d}" if index is not None else '??'
+        # date_str = date.strftime('%y%m%d') if date is not None else '??????'
+        # index_str = f"{int(index):02d}" if index is not None else '??'
 
-        # handle VC
-        base_name = f"{roll_index}_{date_str}_{index_str}_{stk}_{location}_{cam}_{lns}_{rating}s"
+        # # handle VC
+        # base_name = f"{roll_index}_{date_str}_{index_str}_{stk}_{location}_{cam}_{lns}_{rating}s"
 
-        if img.isCopy:
-            new_name = f"{base_name}_{img.copyType}"
-        else:
-            new_name = f"{base_name}"
+        # if img.isCopy:
+        #     new_name = f"{base_name}_{img.copyType}"
+        # else:
+        #     new_name = f"{base_name}"
 
         return new_name
 
@@ -248,7 +249,7 @@ class importTool:
 
 
     # Cleans up a roll by copying jpg and raw files to correct folder within library
-    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1,0]):
+    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1,0,0]):
         if roll.index in [37]: return
         t1 = time()
 
@@ -292,8 +293,10 @@ class importTool:
         previews_path = os.path.join(roll_base_path, '03_previews')
         edits_path = os.path.join(roll_base_path, '04_edits')
         other_path = os.path.join(roll_base_path, '05_other')
-        unmatchedRAW_path = os.path.join(other_path, '01_unmatched_raws')
+        exif_path = os.path.join(other_path, '01_exif')
         contact_sheets_path = os.path.join(other_path, '02_contact_sheets')
+        unmatchedRAW_path = os.path.join(other_path, '03_unmatched_raws')
+
 
         # Warn about raw files missing
         if roll.rawMissing:
@@ -375,6 +378,11 @@ class importTool:
             post=f"[{img.index_str}] Finished archiving!",
             mode="success"
         )
+
+        # export exif json
+        if mode[5]:
+            db.i(roll.dbIdx, 'Exporting EXIF JSON...')
+            roll.export_exif_json(exif_path)
 
         
 
