@@ -9,224 +9,288 @@ from PIL import Image, ImageDraw, ImageFont
 import math
 from concurrent.futures import ThreadPoolExecutor
 import random
+from debuggerTool import debuggerTool
+
+DEBUG = 0
+WARNING = 1
+ERROR = 1
+db = debuggerTool(DEBUG, WARNING, ERROR)
+
+FORMATS = {
+    # 35mm / 135 film
+    "half": {            # 18×24 mm on 135
+        "filmformat": "135",
+        "film_w": 24.0 * 1.0857142857,          # frame pitch for half-frame not standardized in still; leaving blank
+        "film_h": 35.0,          # nominal film width
+        "frame_w": 24.0,
+        "frame_h": 18.0,
+    },
+    "135": {            # 24×36 mm on 135
+        "filmformat": "135",
+        "film_w": 38.00,         # 8 perforations @ 4.75 mm incl. 2 mm gap
+        "film_h": 35.0,          # nominal film width
+        "frame_w": 36.0,
+        "frame_h": 24.0,
+    },
+    "panoramic": {       # XPan-style on 135
+        "filmformat": "135",
+        "film_w": 65.0 + 4.0,          # per-frame advance varies by body
+        "film_h": 35.0,
+        "frame_w": 65.0,         # Hasselblad XPan spec
+        "frame_h": 24.0,
+    },
+
+    # 120 roll film (actual frame areas per ISO 732 table)
+    "645": {
+        "filmformat": "120",
+        "film_w": None,          # spacing varies by back/camera
+        "film_h": 61.0,          # modern films ≈61 mm wide
+        "frame_w": 56.0,
+        "frame_h": 41.5,
+    },
+    "6x4.5": {           # alias of 645
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 41.5,
+    },
+    # "6x6": {
+    #     "filmformat": "120",
+    #     "film_w": None,
+    #     "film_h": 61.0,
+    #     "frame_w": 56.0,
+    #     "frame_h": 56.0,
+    # },
+    "6x6": {
+        "filmformat": "120",
+        "film_w": 74.0,
+        "film_h": 61.0,
+        "frame_h": 56.0,
+        "frame_w": 56.0,
+    },
+    "6x7": {
+        "filmformat": "120",
+        "film_w": 74.0,
+        "film_h": 61.0,
+        "frame_h": 56.0,
+        "frame_w": 70.0,
+    },
+    "6x8": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 77.0,
+    },
+    "6x9": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 84.0,
+    },
+    "6x12": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 118.0,
+    },
+    # "6x17": {
+    #     "filmformat": "120",
+    #     "film_w": None,
+    #     "film_h": 61.0,
+    #     "frame_w": 56 * 2.708333333333333,
+    #     "frame_h": 56.0,  # 6x17 frame height is 2.7083... times the 6x6 height
+    "6x17": {
+        "filmformat": "120",
+        "film_w": 74.0,
+        "film_h": 61.0,
+        "frame_h": 25.846153846153849,
+        "frame_w": 70.0,
+    },
+    "6x24": {
+        "filmformat": "120",
+        "film_w": None,
+        "film_h": 61.0,
+        "frame_w": 56.0,
+        "frame_h": 224.0,
+    },
+
+    # Large format sheet film (sheet size nominal; image area often smaller)
+    "4x5": {
+        "filmformat": "sheet",
+        "film_w": 127.0,         # sheet width
+        "film_h": 102.0,         # sheet height
+        "frame_w": 120.0,        # typical image area
+        "frame_h": 95.0,
+    },
+    "5x7": {
+        "filmformat": "sheet",
+        "film_w": 178.0,
+        "film_h": 127.0,
+        "frame_w": None,         # varies by holder/mask
+        "frame_h": None,
+    },
+    "8x10": {
+        "filmformat": "sheet",
+        "film_w": 254.0,
+        "film_h": 203.0,
+        "frame_w": None,         # image area depends on holder; leaving blank
+        "frame_h": None,
+    },
+    "11x14": {
+        "filmformat": "sheet",
+        "film_w": 356.0,
+        "film_h": 279.0,
+        "frame_w": None,
+        "frame_h": None,
+    },
+
+    # catch-all
+    "custom": {
+        "filmformat": None,
+        "film_w": None,
+        "film_h": None,
+        "frame_w": None,
+        "frame_h": None,
+    },
+}
 
 class Renderer:
-    def __init__(self, roll):
-        print("\n\n\n\n\n\n\n\n\n")
-        self.roll = roll            # roll metadata object
-        self.framecount = roll.countExposures
-        self.emulsion = (self.roll.isColor, self.roll.isBlackAndWhite, self.roll.isSlide)
+    def __init__(self):
+        self.roll = None
+        # Sheet attributes
         self.dpi = 300              # dots per inch
         self.sheet_size = [210, 297]  # sheet dimensions
         self.margin = 5      # page side margins
         self.margin_top = self.margin * 3
         self.margin_rows = 4 # mm between rows
         self.sheet_print_size = [self.sheet_size[0] - 2 * self.margin, self.sheet_size[1] - 2 * self.margin]
-        self.canvas = None          # PIL image canvas
-        self.canvas_2 = None
-        self.draw = None            # PIL draw context
-        self.rebate_metadata = []
-        self.font = ImageFont.truetype(self.roll.fontPath, size=self.to_px(3))  # pick size you want
-        self.fontColor = self.roll.fontColor
         self.rebate_size = None
         self.film_size = None
-        self.save_path = None
+        self.grid = None
+        self.grid_text = None
 
-    
+        # Canvas Objects
+        self.sheets = []
 
-    def render(self, save_path=None, show=True):
-        # 1. prepare layout + assets
-        self.load_format()
+        # Data
+        self.film_size = None
+        self.rebate = None
+        self.rebate_size = None
+        self.framecount = None
+        self.emulsion = None
+        self.font = None
+        self.fontColor = None
+        self.rebate_metadata = []
+        self.rebate_metadata_copies = []
 
-        # 2. build canvas + grid
-        self.build_canvas()
-        self.build_grid()
-        
-        # 3. Handle metadata
+    def render(self, roll, P1=1, P2=1, P3=1):
+        self.roll = roll
+        self.extract_data()
         self.process_metadata()
+        self.prepare_sheets()
+        if P1:
+            self.render_P1()
+        if P2:
+            self.render_P2()
+        if P3:
+            self.render_P3()
+        self.cleanup()
 
-        # 4. Render elements
-        # self.paste_images()
-        # self.paste_rebates()
-        # self.paste_metadata()
-        # self.paste_all()
-        self.render_images()
-        self.render_header()
+    def extract_data(self):
+        # Roll Data
+        self.framecount = self.roll.countExposures
+        self.emulsion = (self.roll.isColor, self.roll.isBlackAndWhite, self.roll.isSlide)
 
-        # 5. Show
-        if show:
-            self.canvas.show()
+        # Font data
+        try:
+            self.font = ImageFont.truetype(self.roll.fontPath, size=self.to_px(3))  # pick size you want
+            self.fontColor = self.roll.fontColor
+            if self.font is None or self.fontColor is None:
+                db.e("[R]", 'Font error roll:', self.roll.dbIdx)
+        except Exception:
+            db.e("[R]", 'Font error roll:', self.roll.dbIdx)
         
-        # 6. Save
-        if save_path:
-            self.canvas.save(save_path)
-            
+        
+        # Derived attributes
+        self.rebate_size, self.film_size = self.get_format(self.roll.filmformat)
+        return
 
-    # Loads film format (35mm, 6x7 etc)
-    def load_format(self):
-        key = self.roll.filmformat
+    def get_format(self, key):
+        """
+        Processes format info from LUT.
+
+        :param key: LUT Key. <roll.filmformat>
+
+        :return rebate_size: Tuple (film_w, film_h)
+        :return film_size: Tuple (frame_w, frame_h)
+        """
         format = FORMATS.get(key)
         if not format:
             raise KeyError(f"Format {key} not found in FORMATS")
-        self.rebate_size = (format["film_w"], format["film_h"]) # in mm
-        self.film_size = (format["frame_w"], format["frame_h"]) # in mm
+        rebate_size = (format["film_w"], format["film_h"]) # in mm
+        film_size = (format["frame_w"], format["frame_h"]) # in mm
+        return rebate_size, film_size
 
-    # Builds initial sheet with dimensions
-    def build_canvas(self):
-        DEBUG = False
-        canvas = Image.new("RGBA", (self.to_px(self.sheet_size[0]), self.to_px(self.sheet_size[1])), (0, 0, 0, 255))
-        draw = ImageDraw.Draw(canvas)
-        if DEBUG:
-            draw = self.debug_draw_margins(draw)
+    def prepare_sheets(self):
+        """
+        Prepares layout for contact sheets. Grid dimensions, margins, sheet size.
+        """
+
+        # init all three pages canvas objects
+        P1_main = self.init_canvas()
+        P2_copies = self.init_canvas()
+        P3_info = self.init_canvas()
+        self.sheets = [P1_main, P2_copies, P3_info]
+
+
+        return
+
+    def init_canvas(self):
+        """
+        Prepares canvas objects
         
-        self.canvas = canvas
-        self.canvas_2 = canvas.copy()
-        self.draw = draw
+        :return (canvas, draw, canvas_temp): Canvas + Draw objects
+        """
 
-    # draws pink guidelines around self.sheet_print_size inside the sheet
-    def debug_draw_margins(self, draw):
-        w, h = self.sheet_size[0], self.sheet_size[1]
-        w_p, h_p = self.sheet_print_size[0], self.sheet_print_size[1]
+        canvas = Image.new("RGBA", (self.to_px(self.sheet_size[0]), self.to_px(self.sheet_size[1])), (0, 0, 0, 255))
+        canvas_temp = canvas.copy()
+        draw = ImageDraw.Draw(canvas)
 
-        d_x = (w - w_p) / 2
-        d_y = (h - h_p) / 2
+        return(canvas, draw, canvas_temp)
 
-        # coords of printable area
-        x0, y0 = self.to_px(d_x), self.to_px(d_y)
-        x1, y1 = self.to_px(w - d_x), self.to_px(h - d_y)
+    def cleanup(self):
+        """
+        Resets all parameters
+        """
+        self.__init__()
+        return
 
-        # draw lines (pink)
-        color = (255, 0, 128, 255)
-        width = 3
-        draw.line([(x0, y0), (x1, y0)], fill=color, width=width)  # top
-        draw.line([(x0, y1), (x1, y1)], fill=color, width=width)  # bottom
-        draw.line([(x0, y0), (x0, y1)], fill=color, width=width)  # left
-        draw.line([(x1, y0), (x1, y1)], fill=color, width=width)  # right
+    def build_text_coords(self, rebates, n):
+        """
+        Calculate text box anchors for each image/metadata, per-image (rebate) size.
 
-        return draw
-    
-    # Build a grid of coordinates for center points for each photo
-    def build_grid(self):
-        sheet = (self.sheet_size[0], self.sheet_size[1])
-        print_area = (self.sheet_print_size[0], self.sheet_print_size[1])
-        rebate = (self.rebate_size[0], self.rebate_size[1]) # frame size of rebate (incl margins) w,h
+        rebates[i] is an image object; w_px, h_px = rebates[i].size
 
-        # calculate optimal grid size
-        cols, rows, k = self.find_optimal_grid(print_area, rebate, self.framecount)
-
-        # Resize rebate and film sizes by k
-        self.k = k
-        # self.rebate_size = [dim * k for dim in self.rebate_size]
-        # self.film_size = [dim * k for dim in self.film_size]
-
-        # Get absolute center coordinates for placement of each frame (x,y) with origin in top left
-        grid = []
-        w = rebate[0] * k
-        h = rebate[1] * k
-        y0 = (sheet[1] - print_area[1]) / 2 + self.margin_top
-        x0 = (sheet[0] - print_area[0]) / 2
-
-        for row in range(rows):
-            for col in range(cols):
-                x = x0 + w * (col + 0.5)
-                y = y0 + h * (row + 0.5)
-                if row > 0:
-                    y += row * self.margin_rows
-                grid.append((x,y))
-
-        self.grid = grid
-
-        self.build_text_coords()
-
-    def find_optimal_grid(self, sheet, frame, n):
-        buffer = self.margin_rows
-        cols = 0
-        rows = 0
-        k_old = 0.0
-        k_new = 0.0
-        k = 0.0
-        k_margin = 0.1
-        tup = (cols, rows, k)  # (best_cols, best_rows, best_k)
-        eps = 1e-12
-
-        best_unscaled = None  # (cols, rows) that fit at k = 1.0
-
-        # find the combination; first prefer any that fit unscaled (k = 1.0), then best k<=1 with margin preference for more cols
-        for cols in range(1, n + 1):
-            rows = math.ceil(n / cols)
-            k_col = sheet[0] / (cols * frame[0])
-            k_row = sheet[1] / (rows * (frame[1] + buffer))
-
-            print(f"Trying {cols} cols x {rows} rows: k_col={k_col:.3f}, k_row={k_row:.3f}")
-
-            # if it fits unscaled, record as a k=1.0 candidate
-            if k_col >= 1.0 - eps and k_row >= 1.0 - eps:
-                if best_unscaled is None:
-                    best_unscaled = (cols, rows)
-                else:
-                    bu_cols, bu_rows = best_unscaled
-                    # prefer more columns; if tied, fewer rows
-                    if cols > bu_cols or (cols == bu_cols and rows < bu_rows):
-                        best_unscaled = (cols, rows)
-                # still continue loop to see if there is an even wider unscaled option
-                continue
-
-            # otherwise, evaluate scaled option (no upscaling)
-            k_new = min(k_col, k_row)
-            if k_new > 1:
-                continue
-
-            best_cols, best_rows, best_k = tup
-
-            # strictly better k → take it
-            if k_new > best_k + eps:
-                k_old = k_new
-                tup = (cols, rows, k_new)
-                continue
-
-            # within margin → prefer more columns
-            if (best_k - k_new) <= k_margin + eps and cols > best_cols:
-                k_old = k_new
-                tup = (cols, rows, k_new)
-                continue
-
-            # equal k (within eps) and more columns → prefer more columns
-            if abs(k_new - best_k) <= eps and cols > best_cols:
-                k_old = k_new
-                tup = (cols, rows, k_new)
-
-        # If any unscaled layout exists, prefer it (k = 1.0), maximizing columns
-        if best_unscaled is not None:
-            uc, ur = best_unscaled
-            print(f"Optimal grid (no scaling): {uc} cols x {ur} rows with k=1.000")
-            return uc, ur, 1.0
-
-        print(f"Optimal grid: {tup[0]} cols x {tup[1]} rows with k={tup[2]:.3f}")
-        return tup[0], tup[1], tup[2]
-
-    # Converts mm to pixels at self.dpi
-    def to_px(self, mm):
-        return round(mm * self.dpi / 25.4)
-
-    # Calculate text box anchors for each image/metadata
-    def build_text_coords(self):
+        :param rebates: list of rebate image objects (already in px)
+        :return coords: list[dict] with keys {TL,TC,TR,BL,BC,BR} -> (x, y, align)
+        """
         # margins in mm → px
         tm_mm = 1.5
-        th_mm = 0
+        th_mm = 0.0
+        if self.roll.filmformat in ['6x7', '6x6', '6x4.5']:
+            tm_mm = 2.5
+            th_mm = 0.6
         tm = int(round(self.to_px(tm_mm)))
         th = int(round(self.to_px(th_mm)))
 
-        # get frame (rebate) pixel size
-        # if you already have it, use that; otherwise open once
-        rebate = self.get_base_rebate_image()
-        w_px, h_px = rebate.size
-        try:
-            rebate.close()
-        except Exception:
-            pass
-
         coords = []
-        for _ in range(self.framecount):
+        for i in range(n):
+            w_px, h_px = rebates[i].size
+
             left  = tm
             right = w_px - tm
             top   = th
@@ -238,14 +302,195 @@ class Renderer:
                 "TC": (cx,    top, "mt"),
                 "TR": (right, top, "rt"),
                 "BL": (left,  bot, "lb"),
-                "BC": (cx,    bot, "mb"),
+                "BC": (cx,    bot, "lb"),
                 "BR": (right, bot, "rb"),
             })
 
-        self.text_coords = coords
+        return coords
 
-    # Scrape relevant metadata from obj to render on rebates
+    def get_rebate(self, key):
+        """
+        Open rebate file
+        
+        :param key: LUT key {roll.filmformat}
+        :return rebate: Image obj
+        """
+        path = os.path.join(os.path.dirname(__file__), 'data', 'rebates', f'{key}.png')
+        if not os.path.exists(path):
+            db.e('[R]', f"Rebate image for format <{key}> not found. Skipping rebates.", path)
+            return None
+        rebate = Image.open(path).convert("RGBA")
+
+        return rebate
+
+    def get_optimal_grid(self, sheet_px, rebates, n):
+        """
+        Grid search over (cols, rows). Sizes are in pixels.
+        - rebates[i] is an image object; (w,h)=rebates[i].size are px
+        - row gap (self.margin_rows) is mm on paper, treated as constant on paper -> convert to px and do NOT scale it
+
+        :param sheet_px: (W_px, H_px) available area in px (typically print_area in px)
+        :param rebates: list of image objects
+        :param n: number of images to place
+        :return: (best_cols, best_rows, best_k)
+        """
+        eps = 1e-12
+        buffer_px = float(self.to_px(self.margin_rows))
+
+        n = min(int(n), len(rebates))
+        if n <= 0:
+            return 0, 0, 0.0
+
+        best_cols, best_rows, best_k = 1, n, 0.0
+        best_score = -1.0
+
+        sheet_w, sheet_h = float(sheet_px[0]), float(sheet_px[1])
+
+        for cols in range(1, n + 1):
+            rows = math.ceil(n / cols)
+
+            col_widths = [0.0] * cols
+            row_heights = [0.0] * rows
+
+            for i in range(n):
+                w_i, h_i = rebates[i].size  # px
+                c = i % cols
+                r = i // cols
+                if r >= rows:
+                    break
+                if w_i > col_widths[c]:
+                    col_widths[c] = float(w_i)
+                if h_i > row_heights[r]:
+                    row_heights[r] = float(h_i)
+
+            total_w = sum(col_widths)
+            total_h_images = sum(row_heights)
+
+            if total_w <= eps or total_h_images <= eps:
+                continue
+
+            # Constant row gaps (paper spacing) consume sheet height directly
+            gaps = buffer_px * max(0, rows - 1)
+            avail_h_for_images = sheet_h - gaps
+            if avail_h_for_images <= eps:
+                continue
+
+            k = min(sheet_w / total_w, avail_h_for_images / total_h_images, 1.0)
+
+            used_w = total_w * k
+            used_h = total_h_images * k + gaps
+
+            # maximize utilized area (fraction of available sheet area)
+            score = (used_w / sheet_w) * (used_h / sheet_h)
+
+            if score > best_score + eps:
+                best_score = score
+                best_cols, best_rows, best_k = cols, rows, k
+            elif abs(score - best_score) <= eps:
+                # tie-break: prefer more columns; if tied, fewer rows
+                if cols > best_cols or (cols == best_cols and rows < best_rows):
+                    best_cols, best_rows, best_k = cols, rows, k
+
+        # primt optimal grid
+        db.i('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
+
+        return best_cols, best_rows, best_k
+
+    def build_grid(self, rebates):
+        """
+        Prepare grid coordinates (image centers) in pixels with origin top-left.
+
+        Assumptions:
+        - sheet_size, margin, margin_top, margin_rows are in mm
+        - rebates[i].size is in px
+        """
+        # mm -> px
+        sheet_px = (float(self.to_px(self.sheet_size[0])), float(self.to_px(self.sheet_size[1])))
+
+        margin_px = float(self.to_px(self.margin))
+        margin_top_px = float(self.to_px(self.margin_top))
+        buffer_px = float(self.to_px(self.margin_rows))
+
+        # define print area anchored by margins (not centered)
+        print_area_px = (
+            float(self.to_px(self.sheet_size[0] - 2 * self.margin)),
+            float(self.to_px(self.sheet_size[1] - self.margin_top - self.margin)),
+        )
+
+        n = min(int(self.framecount), len(rebates))
+
+        cols, rows, k = self.get_optimal_grid(print_area_px, rebates, n)
+        self.k = k
+        n_max = cols * rows
+        if len(rebates) < n_max:
+            n_max = len(rebates)
+
+        # scaled sizes per image (px)
+        sizes = []
+        for i in range(n_max):
+            w_i, h_i = rebates[i].size
+            sizes.append((float(w_i) * k, float(h_i) * k))
+
+        # per-column / per-row max sizes (scaled)
+        col_widths = [0.0] * cols
+        row_heights = [0.0] * rows
+        for i in range(n):
+            w_i, h_i = sizes[i]
+            c = i % cols
+            r = i // cols
+            if r >= rows:
+                break
+            if w_i > col_widths[c]:
+                col_widths[c] = w_i
+            if h_i > row_heights[r]:
+                row_heights[r] = h_i
+
+        total_w = sum(col_widths)
+        total_h = sum(row_heights) + buffer_px * max(0, rows - 1)
+
+        # print area origin (top-left) from margins
+        x_print0 = margin_px
+        y_print0 = margin_top_px
+
+        # center grid block within print area
+        x0 = x_print0 + (print_area_px[0] - total_w) * 0.5
+        y0 = y_print0 + (print_area_px[1] - total_h) * 0.5
+
+        # starts
+        col_starts = [x0]
+        for c in range(1, cols):
+            col_starts.append(col_starts[-1] + col_widths[c - 1])
+
+        row_starts = [y0]
+        for r in range(1, rows):
+            row_starts.append(row_starts[-1] + row_heights[r - 1] + buffer_px)
+
+        # centers
+        grid = []
+        for i in range(n_max):
+            c = i % cols
+            r = i // cols
+            if r >= rows:
+                break
+
+            w_i, h_i = sizes[i]
+            cell_w = col_widths[c]
+            cell_h = row_heights[r]
+
+            x = col_starts[c] + 0.5 * cell_w + 0.5 * (w_i - cell_w)
+            y = row_starts[r] + 0.5 * cell_h + 0.5 * (h_i - cell_h)
+            grid.append((x, y))
+
+        text_coords = self.build_text_coords(rebates, n_max)
+        return grid, text_coords, rows, cols
+
     def process_metadata(self):
+        """
+        Processes relevant metadata and returns relevant dicts
+        
+        :return rebate_metadata: array of metadata dict {TL = cam/lns, TC = index, TR = stk, BL = date, BR = rating}
+        :return rebate_metadata_copy: array of metadata tuples of dicts (md_main, arr_copies)
+        """
         # TL = cam/lns
         # TC = index
         # TR = stk
@@ -254,7 +499,7 @@ class Renderer:
         
         # Build metadata for each image
         metadata = []
-
+        metadata_copies = [] # tuple with (md_main, array[md_copies])
 
         for img in self.roll.images:
         # build camlens and handle cases where lens is missing
@@ -269,208 +514,39 @@ class Renderer:
                 "BR": (str(img.rating) + 's') if img.rating else "???",
             }
             metadata.append(md)
-        
-        # print cam
-        img = self.roll.images[0]
+            
+            # Handle copies
+            if img.containsCopies:
+                i = 0
+                n = len(img.copies)
+                md_main = md.copy()
+                md_main["BC"] = (str(img.index)+".0") if img.index else "???"
 
-        print(img.cam, self.roll.cam)       
+                md_copies = []
+                md_copies.append(md_main)
+                for copy in img.copies:
+                    i += 1
+                    md_copy = md_main.copy()
+                    md_copy["BC"] = str(copy.index)+"."+str(i) if copy.index else "???"
+                    md_copy["BR"] = (str(copy.rating) + 's') if copy.rating else "???"
+                    md_copies.append(md_copy)
+                metadata_copies.append(md_copies)
+        
         self.rebate_metadata = metadata
+        self.rebate_metadata_copies = metadata_copies
 
+        return metadata, metadata_copies
+
+# TODO: rework this shit
+    def render_P3(self):
         return
-
-    def render_images(self):
-        # 1) create base image from rebate
-        base = self.get_base_rebate_image()
-
-        # print base image size in mm using base.width and base.height in mm
-        print(f"Base rebate image size: {base.width * 25.4 / self.dpi:.1f} x {base.height * 25.4 / self.dpi:.1f} mm")
-
-        # 2) parallel process each frame
-        n = min(self.framecount, len(self.grid), len(self.roll.images))
-        print(f"Rendering {n} frames in parallel...")
-        with ThreadPoolExecutor(max_workers=min(8, n)) as executor:
-            futures = [executor.submit(self.task, base.copy(), i) for i in range(n)]
-            results = [f.result() for f in futures]
-        
-        # 3) paste each result onto canvas at grid position
-        for i in range(self.framecount):
-            frame_img = results[i]
-            cx, cy = self.to_px(self.grid[i][0]), self.to_px(self.grid[i][1])
-            x0 = int(cx - frame_img.width / 2)
-            y0 = int(cy - frame_img.height / 2)
-            self.canvas.paste(frame_img, (x0, y0), frame_img)
-
-    def get_base_rebate_image(self):
-        key = self.roll.filmformat
-        path = os.path.join(os.path.dirname(__file__), 'data', 'rebates', f'{key}.png')
-        if not os.path.exists(path):
-            print(f"Rebate image for format {key} not found at {path}. Skipping rebates.")
-            return None
-        rebate = Image.open(path).convert("RGBA")
-
-        return rebate
-    
-    # define parallel subroutine
-    def task(self, rebate_base, i):
-        print(f"Processing frame {i+1}")
-
-        # work on a fresh copy per frame
-        frame = rebate_base.copy()
-
-        bbox_h = int(self.film_size[1])         # mm
-        bbox_w = int(self.film_size[0]) * 2     # mm
-
-        # 1) load exposure
-        path = self.roll.images[i].filePath
-        img = Image.open(path).convert("RGBA")
-
-        # 2) rotate if needed
-        if getattr(self.roll.images[i], "isVertical", False):
-            img = img.rotate(90, expand=True)
-
-        # 3) fit to bounding box (no upscaling)
-        img.thumbnail((self.to_px(bbox_w), self.to_px(bbox_h)), Image.LANCZOS)
-
-        # 4) paste onto frame in centered position
-        px = (frame.width - img.width) // 2
-        py = (frame.height - img.height) // 2
-        frame.paste(img, (px, py), img)
-
-        # 5) overlay rebate ON TOP
-        frame.paste(rebate_base, (0, 0), rebate_base)
-
-        # 6) metadata (draw last)
-        if i < len(self.rebate_metadata) and i < len(self.text_coords):
-            md = self.rebate_metadata[i]
-            coords = self.text_coords[i]
-            draw_local = ImageDraw.Draw(frame)
-
-            # Make a per-thread font to avoid FreeType thread quirks
-            try:
-                local_font = ImageFont.truetype(self.font_path, self.font_size)
-            except Exception:
-                # fall back to shared font or default
-                local_font = getattr(self, "font", ImageFont.load_default())
-
-            # ensure non-transparent color
-            fc = self.fontColor
-            if isinstance(fc, tuple) and len(fc) == 3:
-                fc = (fc[0], fc[1], fc[2], 255)
-
-            for pos, text in md.items():
-                if not text or pos not in coords:
-                    continue
-                
-
-                # TODO: fix text placement and positioning. shows up on 120, not at all on 135. 1
-                # x, y, anchor = coords[pos]
-                x = self.to_px(coords[pos][0])
-                y = self.to_px(coords[pos][1])
-
-                x = coords[pos][0]
-                y = coords[pos][1]
-                anchor = coords[pos][2]
-
-                draw_local.text(
-                    (int(round(x)), int(round(y))),
-                    text,
-                    fill=fc,
-                    font=local_font,
-                    anchor=anchor
-                )
-
-        # 7) scale by k
-        scaled_w = max(1, int(round(frame.width * self.k)))
-        scaled_h = max(1, int(round(frame.height * self.k)))
-        frame = frame.resize((scaled_w, scaled_h), Image.LANCZOS)
-
-        return frame
-
-    def render_header(self):
-        # Build header with the following information/placements:
-        # Top row (bold, larger):
-        #   Left: Title, Right: Roll Index
-        # Second row (smaller):
-        #   date range (start - end) | stock | camera
-
-        # Config
-        font_size_large = self.to_px(8)   # in points
-        font_size_small = self.to_px(5)   # in points
-        font_path = self.roll.fontPath
-        font_color = (255, 255, 255, 255)  # white
-
-        title = self.roll.title if self.roll.title else "78_23-09-23 R35S APX400 Seewlisee"
-        index = f'#{int(self.roll.index):03d}' if self.roll.index is not None else "???"
-        date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
-        date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
-        date_range = f"{date_start} - {date_end}"
-        stock = self.roll.stk if self.roll.stk else "???"
-        camera = self.roll.cameras if self.roll.cameras else "???"
-
-        # Fonts
-        font_large = ImageFont.truetype(font_path, font_size_large)
-        font_small = ImageFont.truetype(font_path, font_size_small)
-
-        # Draw context
-        img = self.canvas
-        draw = ImageDraw.Draw(img)
-
-        # Padding
-        padding_x = self.to_px(self.margin)
-        padding_y = self.to_px(self.margin)
-
-        # --- Top row ---
-        # Left: Title
-        draw.text(
-            (padding_x, padding_y),
-            title,
-            font=font_large,
-            fill=font_color,
-            anchor="la"   # left aligned
-        )
-
-        # Right: Roll Index
-        w, h = img.size
-        bbox_index = draw.textbbox((0, 0), index, font=font_large)
-        w_index = bbox_index[2] - bbox_index[0]
-        h_index = bbox_index[3] - bbox_index[1]
-
-        draw.text(
-            (w - padding_x, padding_y),
-            index,
-            font=font_large,
-            fill=font_color,
-            anchor="ra"   # right aligned
-        )
-
-        # Compute row height from tallest element in top row
-        bbox_title = draw.textbbox((0, 0), title, font=font_large)
-        h_title = bbox_title[3] - bbox_title[1]
-        row_height = max(h_index, h_title)
-
-        # --- Second row ---
-        second_row_y = padding_y + row_height + self.to_px(2)  # spacing between rows
-        row_text = f"{date_range} // {stock} // {camera}"
-
-        draw.text(
-            (padding_x, second_row_y),
-            row_text,
-            font=font_small,
-            fill=font_color,
-            anchor="la"
-        )
-
-        self.canvas = img
-
-
-    def render_infopage(self):
         """
         Build a clean metadata table for each exposure on a fresh canvas.
         Layout: two columns if needed, with headers and truncated cells to fit.
         Uses modern Pillow sizing via draw.textbbox.
         """
         # --- Config ---
-        img_w, img_h = self.canvas.size
+        img_w, img_h = self.sheets[2][0].size
         bg_color = (0, 0, 0, 255)
         font_color = (255, 255, 255, 255)
         grid_color = (255, 255, 255, 64)
@@ -491,7 +567,7 @@ class Renderer:
         font_small = ImageFont.truetype(font_path, max(1, int(font_size_cell * 0.9)))
 
         # New canvas
-        from PIL import ImageDraw, ImageFont, Image
+        # from PIL import ImageDraw, ImageFont, Image
         info_img = Image.new("RGBA", (img_w, img_h), bg_color)
         draw = ImageDraw.Draw(info_img)
 
@@ -652,137 +728,320 @@ class Renderer:
                     overflow_note, font=font_small, fill=font_color, anchor="la")
 
         # Replace current canvas with info page
-        self.canvas_2 = info_img
+        info_img.show()
 
-        # Show canvas
-        self.canvas_2.show()
+    def render_P2(self):
+        if not self.roll.containsCopies: return
+        tup = self.sheets[1]
+        canvas = tup[0]
+        draw = tup[1]
+        canvas_temp = tup[2]
+        images = []
+        metadata = []
+        rebates = []
+        keys = []
+        grid_text_backup = self.grid_text
 
 
-FORMATS = {
-    # 35mm / 135 film
-    "half": {            # 18×24 mm on 135
-        "filmformat": "135",
-        "film_w": 24.0 * 1.0857142857,          # frame pitch for half-frame not standardized in still; leaving blank
-        "film_h": 35.0,          # nominal film width
-        "frame_w": 24.0,
-        "frame_h": 18.0,
-    },
-    "35mm": {            # 24×36 mm on 135
-        "filmformat": "135",
-        "film_w": 38.00,         # 8 perforations @ 4.75 mm incl. 2 mm gap
-        "film_h": 35.0,          # nominal film width
-        "frame_w": 36.0,
-        "frame_h": 24.0,
-    },
-    "panoramic": {       # XPan-style on 135
-        "filmformat": "135",
-        "film_w": 65.0 + 4.0,          # per-frame advance varies by body
-        "film_h": 35.0,
-        "frame_w": 65.0,         # Hasselblad XPan spec
-        "frame_h": 24.0,
-    },
+        j = 0
+        for img in self.roll.images:
+            if img.containsCopies:
+                images.append(img)
+                md = self.rebate_metadata_copies[j][0]
+                metadata.append(md)
+                rebates.append(self.get_rebate(self.roll.filmformat))
+                keys.append(None)
+                k = 0
+                for cpy in img.copies:
+                    k+=1
+                    images.append(cpy)
+                    if cpy.aspectRatio == img.aspectRatio:
+                        keys.append(None)
+                        rebates.append(self.get_rebate(img.filmformat))
+                    elif cpy.filmformat in ['135']:
+                        keys.append(None)
+                        if cpy.isPano:
+                            rebates.append(self.get_rebate(str(cpy.filmformat)+"-pano"))
+                            # rebates.append(self.get_rebate(str(cpy.filmformat)+""))
+                        if cpy.isSquare:
+                            # rebates.append(self.get_rebate(str(cpy.filmformat)+"-square")) # TODO: too small to fit metadata
+                            rebates.append(self.get_rebate(str(cpy.filmformat)+""))
+                    elif cpy.filmformat in ['6x7', '6x6', '6x4.5']:
+                        if cpy.isSquare:
+                            rebates.append(self.get_rebate("6x6"))
+                            keys.append("6x6")
+                        if cpy.isPano:
+                            keys.append("6x17")
+                            rebates.append(self.get_rebate("6x17"))
+                    else:
+                        keys.append(None)
+                        db.e("[R]", "Could not ID format for copy!")
+                    
+                    try:
+                        md = self.rebate_metadata_copies[j][k]
+                    except Exception:
+                        db.e("[R]", "Too many frames for page, skipping!")
+                        continue
+                    metadata.append(md)
+                j+=1
 
-    # 120 roll film (actual frame areas per ISO 732 table)
-    "645": {
-        "filmformat": "120",
-        "film_w": None,          # spacing varies by back/camera
-        "film_h": 61.0,          # modern films ≈61 mm wide
-        "frame_w": 56.0,
-        "frame_h": 41.5,
-    },
-    "6x4.5": {           # alias of 645
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 41.5,
-    },
-    "6x6": {
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 56.0,
-    },
-    "6x7": {
-        "filmformat": "120",
-        "film_w": 74.0,
-        "film_h": 61.0,
-        "frame_h": 56.0,
-        "frame_w": 70.0,
-    },
-    "6x8": {
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 77.0,
-    },
-    "6x9": {
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 84.0,
-    },
-    "6x12": {
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 118.0,
-    },
-    "6x17": {
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 168.0,
-    },
-    "6x24": {
-        "filmformat": "120",
-        "film_w": None,
-        "film_h": 61.0,
-        "frame_w": 56.0,
-        "frame_h": 224.0,
-    },
+        canvasses = []
+        self.grid, self.grid_text, rows, cols = self.build_grid(rebates)
+        n = rows * cols
+        if n < len(images):
+            print(n, len(images))
+            subsets = []
+            for i in range(0, len(images), n):
+                subsets.append((images[i:i+n], metadata[i:i+n], rebates[i:i+n], keys[i:i+n]))
+            for subset in subsets:
+                canvasses.append(self.render_images(canvas_temp.copy(), subset[0], subset[1], subset[2], keys=subset[3]))
+        else:
+            print(n, len(images))
+            canvasses.append(self.render_images(canvas_temp.copy(), images, metadata, rebates, keys=keys))
 
-    # Large format sheet film (sheet size nominal; image area often smaller)
-    "4x5": {
-        "filmformat": "sheet",
-        "film_w": 127.0,         # sheet width
-        "film_h": 102.0,         # sheet height
-        "frame_w": 120.0,        # typical image area
-        "frame_h": 95.0,
-    },
-    "5x7": {
-        "filmformat": "sheet",
-        "film_w": 178.0,
-        "film_h": 127.0,
-        "frame_w": None,         # varies by holder/mask
-        "frame_h": None,
-    },
-    "8x10": {
-        "filmformat": "sheet",
-        "film_w": 254.0,
-        "film_h": 203.0,
-        "frame_w": None,         # image area depends on holder; leaving blank
-        "frame_h": None,
-    },
-    "11x14": {
-        "filmformat": "sheet",
-        "film_w": 356.0,
-        "film_h": 279.0,
-        "frame_w": None,
-        "frame_h": None,
-    },
+        # render
+        for i, canvas_i in enumerate(canvasses):
+            name = f'EDITS ({i+1}/{len(canvasses)})' # title
+            index = f'#{self.roll.index_str}' # index
+            date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
+            date_end = date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
+            date_range = f"{date_start} - {date_end}"
+            stock = self.roll.stk if self.roll.stk else "???"
+            camera = self.roll.cameras[0] if self.roll.cameras else "???"
 
-    # catch-all
-    "custom": {
-        "filmformat": None,
-        "film_w": None,
-        "film_h": None,
-        "frame_w": None,
-        "frame_h": None,
-    },
-}
+            title = [
+                (name, index),
+                (date_start, date_end, date_range),
+                (stock, camera)
+            ]
+            canvas = self.render_title(canvas_i, title)
+            canvas.show()
+
+    def render_P1(self):
+        tup = self.sheets[0]
+        canvas = tup[0]
+        draw = tup[1]
+        canvas_temp = tup[2]
+        images = self.roll.images
+        metadata = self.rebate_metadata
+        rebates = [self.get_rebate(self.roll.filmformat) for _ in images]
+        self.grid, self.grid_text, _, _ = self.build_grid(rebates)
+
+        canvas = self.render_images(canvas_temp, images, metadata, rebates)
+        canvas_temp = canvas.copy()
+
+        # build title(s)
+
+        name = self.roll.title # title
+        name = name.split("_")[4:] if "_" in name else [name]
+        name = " ".join(name)
+        # Check name fits on page
+        max_length = 35
+        if len(name) > max_length:
+            name = name[:max_length-3] + "..."
+        index = f'#{self.roll.index_str}' # index
+        date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
+        date_end = date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
+        date_range = f"{date_start} - {date_end}"
+        stock = self.roll.stk if self.roll.stk else "???"
+        camera = self.roll.cameras[0] if self.roll.cameras else "???"
+
+        title = [
+            (name, index),
+            (date_start, date_end, date_range),
+            (stock, camera)
+        ]
+        canvas = self.render_title(canvas_temp, title)
+        canvas.show()
+
+    def render_title(self, canvas, title):
+        """
+        Renders title data
+        
+        :param self: Description
+        :param canvas: canvas img object
+        :param title: title array
+        """
+        font_large = ImageFont.truetype(self.roll.fontPath, self.to_px(8))
+        font_small = ImageFont.truetype(self.roll.fontPath, self.to_px(5))
+        font_color = (255, 255, 255, 255)  # white
+        draw = ImageDraw.Draw(canvas)
+
+        name = title[0][0]
+        index = title[0][1]
+        date_range = title[1][2]
+        stock = title[2][0]
+        camera = title[2][1]
+
+        # Padding
+        padding_x = self.to_px(self.margin)
+        padding_y = self.to_px(self.margin)
+
+
+        # --- Top row ---
+        # Left: Title
+        draw.text(
+            (padding_x, padding_y),
+            name,
+            font=font_large,
+            fill=font_color,
+            anchor="la"   # left aligned
+        )
+
+        # Right: Roll Index
+        w, h = canvas.size
+        bbox_index = draw.textbbox((0, 0), index, font=font_large)
+        w_index = bbox_index[2] - bbox_index[0]
+        h_index = bbox_index[3] - bbox_index[1]
+
+        draw.text(
+            (w - padding_x, padding_y),
+            index,
+            font=font_large,
+            fill=font_color,
+            anchor="ra"   # right aligned
+        )
+
+        # Compute row height from tallest element in top row
+        bbox_title = draw.textbbox((0, 0), name, font=font_large)
+        h_title = bbox_title[3] - bbox_title[1]
+        row_height = max(h_index, h_title)
+
+        # --- Second row ---
+        second_row_y = padding_y + row_height + self.to_px(2)  # spacing between rows
+        row_text = f"{date_range} // {stock} // {camera}"
+
+        draw.text(
+            (padding_x, second_row_y),
+            row_text,
+            font=font_small,
+            fill=font_color,
+            anchor="la"
+        )
+
+        return canvas
+
+    def render_images(self, canvas, images, metadata, rebates, keys=[None]):
+        n = len(images)
+        with ThreadPoolExecutor(max_workers=min(8, n)) as executor:
+            futures = [executor.submit(self.render_image, images[i], metadata[i], rebates[i], i, keys=keys) for i in range(n)]
+            results = [f.result() for f in futures]
+
+        # canvas should be RGBA if using alpha compositing
+        if canvas.mode != "RGBA":
+            canvas = canvas.convert("RGBA")
+
+        for i in range(n):
+            img = results[i]
+            try:
+                cx, cy = self.grid[i]  # already px
+            except Exception:
+                db.e("[R]", "Too many photos for sheet, skipping!")
+                continue
+
+            x0 = int(round(cx - img.width / 2))
+            y0 = int(round(cy - img.height / 2))
+
+            # optional: skip if completely off-canvas (debug aid)
+            # if x0 >= canvas.width or y0 >= canvas.height or (x0 + img.width) <= 0 or (y0 + img.height) <= 0:
+            #     continue
+
+            canvas.paste(img, (x0, y0), img)
+
+        return canvas
+
+    def render_image(self, image, md, rebate_orig, i, keys=[None]):
+        """
+        Render single image and metadata based on position i and image object
+        
+        :param image: ExposureObj
+        :param md: metadata dict
+        :param i: index
+        """
+        path = image.filePath
+        # set rebate object to grayscale if black and white
+        if self.roll.isBlackAndWhite:
+            rebate = rebate_orig.copy()
+            rebate = rebate.convert("LA").convert("RGBA")
+        else:
+            rebate = rebate_orig.copy()
+        
+        base = rebate.copy()
+        img = Image.open(path).convert("RGBA")
+
+        # rotate
+        if image.isVertical:
+            img = img.rotate(90, expand=True)
+    
+        # resize
+        if len(keys) > 1 and keys[i] is not None:
+            bbox_h = int(FORMATS[keys[i]]["frame_h"])         # mm
+            bbox_w = int(FORMATS[keys[i]]["frame_w"]) * 2     #
+        else:
+            bbox_h = int(self.film_size[1])         # mm
+            bbox_w = int(self.film_size[0]) * 2     # mm
+        img.thumbnail((self.to_px(bbox_w), self.to_px(bbox_h)), Image.LANCZOS)
+
+        # paste image onto rebate
+        px = (base.width - img.width) // 2
+        py = (base.height - img.height) // 2
+        base.paste(img, (px, py), img)
+
+        # paste rebate on top
+        base.paste(rebate, (0, 0), rebate)
+
+        # render metadata
+        base = self.render_rebate(base, md, i)
+
+        # scale
+        scaled_w = max(1, int(round(base.width * self.k)))
+        scaled_h = max(1, int(round(base.height * self.k)))
+        base = base.resize((scaled_w, scaled_h), Image.LANCZOS)
+
+        return base
+
+    def render_rebate(self, base_orig, md, i):
+        """
+        Pupulate and render metadata text around image rebate
+        
+        :param base_orig: img canvas object
+        :param md: metadata dict
+        :param i: index
+        :return base: populated img canvas object
+        """
+        base = base_orig.copy()
+        if i >= len(self.grid_text):
+            db.e("[R]", "Too many photos on page! Skipping")
+            return base
+        coords = self.grid_text[i]
+        font = ImageFont.truetype(self.roll.fontPath, self.to_px(3))
+
+        # draw text
+        for pos, text in md.items():
+            if not text or pos not in coords:
+                continue
+            x = self.to_px(coords[pos][0])
+            y = self.to_px(coords[pos][1])
+
+            x = coords[pos][0]
+            y = coords[pos][1]
+            anchor = coords[pos][2]
+
+            draw = ImageDraw.Draw(base)
+            draw.text(
+                (int(round(x)), int(round(y))),
+                text,
+                fill=self.fontColor,
+                font=font,
+                anchor=anchor
+            )
+        return base
+
+    def to_px(self, mm):
+        """
+        Converts mm to pixels based on self.dpi
+
+        :param mm: mm to convert
+        :return px: corresponding pixels
+        """
+        return round(mm * self.dpi / 25.4)
