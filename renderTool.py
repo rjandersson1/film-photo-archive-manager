@@ -9,7 +9,11 @@ from PIL import Image, ImageDraw, ImageFont
 import math
 from concurrent.futures import ThreadPoolExecutor
 import random
+
+from pyparsing import line
 from debuggerTool import debuggerTool
+import subprocess
+import sys
 
 DEBUG = 0
 WARNING = 1
@@ -183,6 +187,7 @@ class Renderer:
         self.framecount = None
         self.emulsion = None
         self.font = None
+        self.fontPath = "fonts/JMH Typewriter mono Bold.ttf"
         self.fontColor = None
         self.rebate_metadata = []
         self.rebate_metadata_copies = []
@@ -283,7 +288,7 @@ class Renderer:
         th_mm = 0.0
         if self.roll.filmformat in ['6x7', '6x6', '6x4.5']:
             tm_mm = 2.5
-            th_mm = 0.6
+            th_mm = 0.8
         tm = int(round(self.to_px(tm_mm)))
         th = int(round(self.to_px(th_mm)))
 
@@ -537,198 +542,103 @@ class Renderer:
 
         return metadata, metadata_copies
 
-# TODO: rework this shit
     def render_P3(self):
-        return
-        """
-        Build a clean metadata table for each exposure on a fresh canvas.
-        Layout: two columns if needed, with headers and truncated cells to fit.
-        Uses modern Pillow sizing via draw.textbbox.
-        """
-        # --- Config ---
-        img_w, img_h = self.sheets[2][0].size
-        bg_color = (0, 0, 0, 255)
-        font_color = (255, 255, 255, 255)
-        grid_color = (255, 255, 255, 64)
 
-        pad_x = self.margin
-        pad_y = self.margin
-        row_gap = self.to_px(0.6)  # gap between rows
-        col_gap = self.to_px(1.2)  # gap between the two table columns (left/right pages)
-        header_gap = self.to_px(0.8)
+        def get_str(img, max_lengths=None):
+            string_arr = []
 
-        font_size_header = self.to_px(4)
-        font_size_cell = self.to_px(3.5)
-        font_path = self.roll.fontPath
+            if img.isOriginal:
+                string_arr.append(img.index_str)
+                string_arr.append(img.dateExposed.strftime("%y-%m-%d") if img.dateExposed else "???")
+                string_arr.append((str(img.rating) + "s") if img.rating else "???")
+                string_arr.append(img.lensModel if img.lensModel else "---")
 
-        # Fonts
-        font_header = ImageFont.truetype(font_path, font_size_header)
-        font_cell = ImageFont.truetype(font_path, font_size_cell)
-        font_small = ImageFont.truetype(font_path, max(1, int(font_size_cell * 0.9)))
+                string_arr.append(f"f/{img.fNumber}" if img.fNumber else "-")
+                string_arr.append(str(img.shutterSpeed) if img.shutterSpeed else "-")
 
-        # New canvas
-        # from PIL import ImageDraw, ImageFont, Image
-        info_img = Image.new("RGBA", (img_w, img_h), bg_color)
-        draw = ImageDraw.Draw(info_img)
+                string_arr.append(img.location if img.location else "---")
+                string_arr.append(img.state if img.state else "---")
 
-        # Utilities
-        def text_size(s, font):
-            bbox = draw.textbbox((0, 0), str(s), font=font)
-            return bbox[2] - bbox[0], bbox[3] - bbox[1]
+            if img.isCopy:
+                string_arr.append("")   # index
+                string_arr.append("")   # date
+                string_arr.append((str(img.rating) + "s") if img.rating else "???")
+                string_arr.append(img.copyType if img.copyType else "???")
+                string_arr.append("")   # fnum
+                string_arr.append("")   # shutter
+                string_arr.append("")   # location
+                string_arr.append("")   # state
 
-        def fit_text(s, font, max_w):
-            s = "" if s is None else str(s)
-            if not s:
-                return s
-            w, _ = text_size(s, font)
-            if w <= max_w:
-                return s
-            # binary-like trim with ellipsis
-            ell = "…"
-            left, right = 0, len(s)
-            best = ""
-            while left <= right:
-                mid = (left + right) // 2
-                cand = s[:mid] + ell
-                w_cand, _ = text_size(cand, font)
-                if w_cand <= max_w:
-                    best = cand
-                    left = mid + 1
-                else:
-                    right = mid - 1
-            return best
+            if max_lengths is not None:
+                string_arr = [
+                    s.ljust(max_lengths[i]) if i < len(max_lengths) else s
+                    for i, s in enumerate(string_arr)
+                ]
 
-        def yn(v):
-            if v is None:
-                return "—"
-            return "Y" if bool(v) else "N"
+            string = "  ".join(string_arr)
+            return string, string_arr
+        
+        def get_max_lengths(roll):
+            # get max string lengths for each, and return tuple of max lengths for formatting
+            max_lengths_arr = []
+            for img in roll.images_all:
+                _, string_arr = get_str(img)
+                for i, s in enumerate(string_arr):
+                    if len(max_lengths_arr) <= i:
+                        max_lengths_arr.append(len(s))
+                    else:
+                        if len(s) > max_lengths_arr[i]:
+                            max_lengths_arr[i] = len(s)
+            return max_lengths_arr
 
-        def safe_date(d):
-            return d.strftime("%y.%m.%d") if d else "———"
-
-        # Columns: (header, width_fraction_of_table)
-        # Table width = (img_w - 2*pad_x - col_gap) / 2 for each side
-        # Fractions roughly tuned; notes gets the remainder.
-        col_defs = [
-            ("#", 0.08),
-            ("Date", 0.16),
-            ("Cam/Lens", 0.24),
-            ("Stock", 0.16),
-            ("ISO", 0.08),
-            ("f", 0.08),
-            ("t", 0.12),
-            ("★", 0.08),
-            # Notes is implicit remainder in rendering step
-        ]
-
-        # Compute per-side table geometry
-        side_w = (img_w - 2 * pad_x - col_gap) // 2
-        # Derive absolute widths and leave remainder for Notes
-        abs_widths = []
-        taken = 0
-        for i, (_, frac) in enumerate(col_defs):
-            w_abs = int(side_w * frac)
-            abs_widths.append(w_abs)
-            taken += w_abs
-        notes_w = side_w - taken
-        abs_widths.append(notes_w)
-        headers = [h for h, _ in col_defs] + ["Notes"]
-
-        # Row height from font metrics
-        _, header_h = text_size("Hg", font_header)
-        _, cell_h = text_size("Hg", font_cell)
-        row_h = cell_h + row_gap
-
-        # Top labels
-        title = self.roll.title if getattr(self.roll, "title", None) else "Info"
-        title_w, _ = text_size(title, font_header)
-        draw.text((pad_x, pad_y), title, font=font_header, fill=font_color, anchor="la")
-
-        subtitle = (
-            f"Roll {(('#' + str(int(self.roll.index))).replace('#0', '#00')):03s} | "
-            f"{safe_date(getattr(self.roll, 'startDate', None))} – "
-            f"{safe_date(getattr(self.roll, 'endDate', None))}"
+        canvas = self.sheets[2][0].copy()
+        font_color = (255,255,255,255)
+        font_size = self.to_px(3) # mm
+        row_gap = self.to_px(0.75)
+        font = ImageFont.truetype(
+            "fonts/JMH Typewriter mono Bold.ttf",
+            font_size
         )
-        sub_y = pad_y + header_h + self.to_px(0.5)
-        draw.text((pad_x, sub_y), subtitle, font=font_small, fill=font_color, anchor="la")
 
-        # First table top-left corner (left page)
-        table_top = sub_y + header_gap + cell_h
-        table_lefts = [pad_x, pad_x + side_w + col_gap]  # left and right tables
-
-        # Header row draw function
-        def draw_header(x0, y0):
-            x = x0
-            for i, head in enumerate(headers):
-                w_col = abs_widths[i]
-                text = fit_text(head, font_small, max(1, w_col))
-                draw.text((x, y0), text, font=font_small, fill=font_color, anchor="la")
-                x += w_col
-            # underline
-            y_line = y0 + cell_h + self.to_px(0.2)
-            draw.line((x0, y_line, x0 + side_w, y_line), fill=grid_color, width=1)
-
-        # How many rows fit per side?
-        usable_h = img_h - table_top - pad_y
-        rows_per_side = max(1, int(usable_h // row_h) - 1)  # minus header row
-
-        # Build rows from self.roll.images
+        # Define row coordinates
+        roll = self.roll
+        max_lengths = get_max_lengths(roll)
+        n = len(roll.images_all)
         rows = []
-        for img in getattr(self.roll, "images", []):
-            idx = f"{(img.index if img.index is not None else 0):02d}"
-            date_s = safe_date(getattr(img, "dateExposed", None))
-            cam = getattr(img, "cam", None) or getattr(img, "camera", None) or "?"
-            lns = getattr(img, "lns", None) or getattr(img, "lens", None) or "?"
-            cam_lns = f"{cam}/{lns}"
-            stk = getattr(img, "stk", None) or getattr(img, "stock", None) or "?"
-            iso = getattr(img, "iso", None) or getattr(img, "boxspeed", None) or "?"
-            fnum = getattr(img, "fNumber", None)
-            f_disp = f"f/{fnum:g}" if isinstance(fnum, (int, float)) else (f"{fnum}" if fnum else "—")
-            sh = getattr(img, "shutterSpeed", None) or getattr(img, "exposureTime", None)
-            if isinstance(sh, (int, float)) and sh > 0:
-                # display as 1/x if <1
-                sh_disp = f"1/{int(round(1/sh))}" if sh < 1 else f"{int(round(sh))}s"
-            else:
-                sh_disp = sh if sh else "—"
-            rating = getattr(img, "rating", None)
-            rating_disp = "—" if rating in (None, "", 0) else str(rating)
-            notes = getattr(img, "notes", None) or ""
+        
+        # print str on each row
+        draw = ImageDraw.Draw(canvas)
+        lines = []
+        # build main image metadata
+        for i in range(len(roll.images)):
+            img = roll.images[i]
+            string, _ = get_str(img, max_lengths)
+            lines.append(string)
+        
+        # build copy metadata and insert after main image metadata
+        lines.append("")
+        lines.append("")
+        lines.append("Edits:")
 
-            rows.append([idx, date_s, cam_lns, stk, iso, f_disp, sh_disp, rating_disp, notes])
+        for i in range(len(roll.images)):
+            img = roll.images[i]
+            if img.containsCopies:
+                # get original string
+                original_str, _ = get_str(img, max_lengths)
+                lines.append(original_str)
 
-        # Draw tables (left then right) with pagination over rows
-        row_index = 0
-        for side in range(2):
-            x0 = table_lefts[side]
-            y0 = table_top
-            # Header
-            draw_header(x0, y0)
-            y = y0 + row_h
-            for _ in range(rows_per_side):
-                if row_index >= len(rows):
-                    break
-                x = x0
-                row = rows[row_index]
-                for i, cell in enumerate(row):
-                    w_col = abs_widths[i]
-                    cell_txt = fit_text("" if cell is None else str(cell), font_cell, max(1, w_col))
-                    draw.text((x, y), cell_txt, font=font_cell, fill=font_color, anchor="la")
-                    x += w_col
-                # optional row separators
-                draw.line((x0, y + cell_h + self.to_px(0.15), x0 + side_w, y + cell_h + self.to_px(0.15)),
-                        fill=grid_color, width=1)
-                y += row_h
-                row_index += 1
+                # handle copies
+                for copy in img.copies:
+                    copy_str, _ = get_str(copy, max_lengths)
+                    lines.append(copy_str)  # insert copy metadata after main image metadata
 
-        # If we have more rows than fit in two sides, indicate overflow
-        if row_index < len(rows):
-            overflow_note = f"+{len(rows) - row_index} more…"
-            note_w, _ = text_size(overflow_note, font_small)
-            draw.text((img_w - pad_x - note_w, img_h - pad_y - cell_h),
-                    overflow_note, font=font_small, fill=font_color, anchor="la")
-
-        # Replace current canvas with info page
-        info_img.show()
+        # Draw all
+        for i, line in enumerate(lines):
+            y = self.to_px(self.margin_top * 1.2) + font_size + row_gap + i * (font_size + row_gap)
+            draw.text((self.to_px(self.margin), y), line, font=font, fill=font_color, anchor="la")
+            
+        self.render_title(canvas, "METADATA")
+        canvas.show()
 
     def render_P2(self):
         if not self.roll.containsCopies: return
@@ -802,19 +712,7 @@ class Renderer:
         # render
         for i, canvas_i in enumerate(canvasses):
             name = f'EDITS ({i+1}/{len(canvasses)})' # title
-            index = f'#{self.roll.index_str}' # index
-            date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
-            date_end = date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
-            date_range = f"{date_start} - {date_end}"
-            stock = self.roll.stk if self.roll.stk else "???"
-            camera = self.roll.cameras[0] if self.roll.cameras else "???"
-
-            title = [
-                (name, index),
-                (date_start, date_end, date_range),
-                (stock, camera)
-            ]
-            canvas = self.render_title(canvas_i, title)
+            canvas = self.render_title(canvas_i, title=name)
             canvas.show()
 
     def render_P1(self):
@@ -832,29 +730,11 @@ class Renderer:
 
         # build title(s)
 
-        name = self.roll.title # title
-        name = name.split("_")[4:] if "_" in name else [name]
-        name = " ".join(name)
-        # Check name fits on page
-        max_length = 35
-        if len(name) > max_length:
-            name = name[:max_length-3] + "..."
-        index = f'#{self.roll.index_str}' # index
-        date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
-        date_end = date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
-        date_range = f"{date_start} - {date_end}"
-        stock = self.roll.stk if self.roll.stk else "???"
-        camera = self.roll.cameras[0] if self.roll.cameras else "???"
 
-        title = [
-            (name, index),
-            (date_start, date_end, date_range),
-            (stock, camera)
-        ]
-        canvas = self.render_title(canvas_temp, title)
+        canvas = self.render_title(canvas_temp)
         canvas.show()
 
-    def render_title(self, canvas, title):
+    def render_title(self, canvas, title=None, subtitle=None):
         """
         Renders title data
         
@@ -862,16 +742,31 @@ class Renderer:
         :param canvas: canvas img object
         :param title: title array
         """
-        font_large = ImageFont.truetype(self.roll.fontPath, self.to_px(8))
-        font_small = ImageFont.truetype(self.roll.fontPath, self.to_px(5))
+        index = f'#{self.roll.index_str}' # index
+        if title is None:
+            name = self.roll.title # title
+            name = name.split("_")[4:] if "_" in name else [name]
+            name = " ".join(name)
+            max_length = 35
+            if len(name) > max_length:
+                name = name[:max_length-3] + "..."
+            title = name.upper() if name else "UNTITLED ROLL"
+            
+
+        if subtitle is None:
+            date_start = self.roll.startDate.strftime("%y.%m.%d") if self.roll.startDate else "??????"
+            date_end = date_end = self.roll.endDate.strftime("%y.%m.%d") if self.roll.endDate else "??????"
+            date_range = f"{date_start} - {date_end}"
+            stock = self.roll.stk if self.roll.stk else "???"
+            camera = self.roll.cameras[0] if self.roll.cameras else "???"
+            subtitle = f"{date_range} // {stock} // {camera}"
+            subtitle = subtitle.upper()
+
+
+        font_large = ImageFont.truetype(self.fontPath, self.to_px(6))
+        font_small = ImageFont.truetype(self.fontPath, self.to_px(4))
         font_color = (255, 255, 255, 255)  # white
         draw = ImageDraw.Draw(canvas)
-
-        name = title[0][0]
-        index = title[0][1]
-        date_range = title[1][2]
-        stock = title[2][0]
-        camera = title[2][1]
 
         # Padding
         padding_x = self.to_px(self.margin)
@@ -882,7 +777,7 @@ class Renderer:
         # Left: Title
         draw.text(
             (padding_x, padding_y),
-            name,
+            title,
             font=font_large,
             fill=font_color,
             anchor="la"   # left aligned
@@ -903,17 +798,17 @@ class Renderer:
         )
 
         # Compute row height from tallest element in top row
-        bbox_title = draw.textbbox((0, 0), name, font=font_large)
+        bbox_title = draw.textbbox((0, 0), title, font=font_large)
         h_title = bbox_title[3] - bbox_title[1]
         row_height = max(h_index, h_title)
 
         # --- Second row ---
         second_row_y = padding_y + row_height + self.to_px(2)  # spacing between rows
-        row_text = f"{date_range} // {stock} // {camera}"
+
 
         draw.text(
             (padding_x, second_row_y),
-            row_text,
+            subtitle,
             font=font_small,
             fill=font_color,
             anchor="la"
@@ -1014,7 +909,7 @@ class Renderer:
             db.e("[R]", "Too many photos on page! Skipping")
             return base
         coords = self.grid_text[i]
-        font = ImageFont.truetype(self.roll.fontPath, self.to_px(3))
+        font = ImageFont.truetype(self.roll.fontPath, self.to_px(2))
 
         # draw text
         for pos, text in md.items():
@@ -1045,3 +940,12 @@ class Renderer:
         :return px: corresponding pixels
         """
         return round(mm * self.dpi / 25.4)
+
+
+
+
+if __name__ == "__main__":
+    subprocess.run(
+        [sys.executable, "/Users/rja/Documents/Coding/film-photo-archive-manager/main.py"],
+        check=True
+    )
