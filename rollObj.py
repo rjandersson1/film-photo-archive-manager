@@ -96,6 +96,7 @@ class rollObj:
         self.update_metadata() # update film emulsion info for roll and other metadata
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_file_metadata()
+        self.generate_title()
         self.verify_roll()
 
     # 2) Identify filepaths & gather directory data
@@ -147,6 +148,12 @@ class rollObj:
             self.images = []
         return
 
+    def generate_title(self):
+        locations_str  = '+'.join(self.locations) if self.locations else 'Unknown'
+        index = self.index_str
+        date = self.startDate
+        title = f"{index}_{date.strftime('%y')}-{date.strftime('%m')}-{self.endDate.strftime('%m')}_{self.stk}_{self.cam}_{locations_str}"
+        self.title = title
 
     def find_image_dirs(self):
         # search new structure
@@ -291,7 +298,7 @@ class rollObj:
                     image = exposureObj(self, file_path)
                     images.append(image)
 
-        
+
         # Update image list attribute
         self.images = images
         self.reindex_images()
