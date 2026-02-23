@@ -15,7 +15,7 @@ from debuggerTool import debuggerTool
 import subprocess
 import sys
 
-DEBUG = 0
+DEBUG = 1
 WARNING = 0
 ERROR = 0
 db = debuggerTool(DEBUG, WARNING, ERROR)
@@ -400,7 +400,7 @@ class Renderer:
 
             # Constant row gaps (paper spacing) consume sheet height directly
             gaps = buffer_px * max(0, rows - 1)
-            avail_h_for_images = sheet_h - gaps
+            avail_h_for_images = (sheet_h - gaps) - 125
             if avail_h_for_images <= eps:
                 continue
 
@@ -409,8 +409,19 @@ class Renderer:
             used_w = total_w * k
             used_h = total_h_images * k + gaps
 
+
+            col_bias = 1.0
+            if self.roll.filmformat in ['35mm', '135']:
+                if cols == 6:
+                    col_bias = 1.05 # prefer 6 cols
+                if cols < 6:
+                    col_bias = 0.95 # penalize fewer cols
+                
+            
+
+
             # maximize utilized area (fraction of available sheet area)
-            score = (used_w / sheet_w) * (used_h / sheet_h)
+            score = (used_w / sheet_w) * (used_h / sheet_h) * col_bias
 
             if score > best_score + eps:
                 best_score = score
@@ -421,7 +432,7 @@ class Renderer:
                     best_cols, best_rows, best_k = cols, rows, k
 
         # primt optimal grid
-        # db.d('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
+        db.d('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
 
         return best_cols, best_rows, best_k
 
@@ -641,23 +652,23 @@ class Renderer:
             lines.append(string)
         
         # build copy metadata and insert after main image metadata
-        lines.append("")
-        lines.append("")
-        lines.append("")
-        lines.append("Edits")
-        lines.append("")
+        if roll.containsCopies:
+            lines.append("")
+            lines.append("")
+            lines.append("")
+            lines.append("Edits")
+            lines.append("")
+            for i in range(len(roll.images)):
+                img = roll.images[i]
+                if img.containsCopies:
+                    # get original string
+                    original_str, _ = get_str(img, max_lengths)
+                    lines.append(original_str)
 
-        for i in range(len(roll.images)):
-            img = roll.images[i]
-            if img.containsCopies:
-                # get original string
-                original_str, _ = get_str(img, max_lengths)
-                lines.append(original_str)
-
-                # handle copies
-                for copy in img.copies:
-                    copy_str, _ = get_str(copy, max_lengths)
-                    lines.append(copy_str)  # insert copy metadata after main image metadata
+                    # handle copies
+                    for copy in img.copies:
+                        copy_str, _ = get_str(copy, max_lengths)
+                        lines.append(copy_str)  # insert copy metadata after main image metadata
 
         # Draw all
         for i, line in enumerate(lines):
