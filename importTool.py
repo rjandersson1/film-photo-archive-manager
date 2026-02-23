@@ -7,7 +7,7 @@ from tkinter.filedialog import askdirectory
 import shutil
 import random
 from debuggerTool import debuggerTool
-from time import time
+from time import time, sleep
 from PIL import Image
 import renderTool
 
@@ -249,7 +249,21 @@ class importTool:
 
 
     # Cleans up a roll by copying jpg and raw files to correct folder within library
-    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1,0,0]):
+    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1,1,1]):
+        """
+        Cleans up a roll by copying jpg and raw files to correct folder within library.
+
+        param roll: roll object to be cleaned
+        param library_path: base path of library to copy files to. If None, defaults to '/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography'
+        param mode: list of 6 binary values indicating which operations to perform:
+            [0] copy raw files to scans folder
+            [1] copy main jpg files to exports folder
+            [2] copy preview files to previews folder
+            [3] copy edits / virtual copies to edits folder
+            [4] render contact sheet and save to contact sheets folder
+            [5] export exif json to exif folder
+        """
+
         if roll.index in [37]: return
         t1 = time()
 
@@ -303,7 +317,20 @@ class importTool:
             db.e(roll.dbIdx, f'RAW files missing!')
 
         # init progress bar
-        total_length = len(roll.images) * mode[0] + len(roll.images) * mode[1] + len(roll.images) * mode[2] + roll.countCopies * mode[3]
+        n = len(roll.images)
+        m = len(roll.images_all)
+        r = roll.countRaw if roll.rawMissing == False else 0
+        c = roll.countCopies if roll.countCopies else 0
+        total_length = (
+            r * mode[0] + # copy raw files
+            n * mode[1] + # copy main jpg files
+            m * mode[2] + # copy preview files
+            c * mode[3] + # copy edits / virtual copies
+            3 * m * mode[4] + # render contact sheets
+            1 * mode[5]   # export exif json
+        )
+
+
         progress_index = 0
         
         # Copy to directories
@@ -343,8 +370,7 @@ class importTool:
                     mode="info"
                 )
                 self.copy_preview(img, previews_path)
-
-            # Copy edits / virtual copies to edits
+# Copy edits / virtual copies to edits
             if mode[3]:
                 for copy in img.copies:
                     progress_index += 1
@@ -361,31 +387,53 @@ class importTool:
 
         # copy over leftover raw files just in case
         if mode[0]:
+            progress_index += 1
+            db.progress(
+                pre=f"[{index}]",
+                current=progress_index,
+                total=total_length,
+                post=f"Copying unmatched RAWs...",
+                mode="info"
+            )
             self.copy_unmatched_raws(roll, unmatchedRAW_path)
 
         # Render contact sheets
         if mode[4]:
-            save_path = os.path.join(contact_sheets_path, f"{roll.index_str}_contact_sheet.png")
+            db.progress(
+                pre=f"[{index}]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheets...",
+                mode="info"
+            )
+            progress_index += 3 * m
+            output_folder = contact_sheets_path
+            save_path = roll_base_path
             if not os.path.exists(contact_sheets_path):
                 os.makedirs(contact_sheets_path)
-            contact_sheet = renderTool.Renderer(roll)
-            contact_sheet.render(save_path=save_path, show=True)
-        t2 = time()
+            renderer = renderTool.Renderer()
+            renderer.render(roll, 1,1,1, save=1, show=0, output_folder=output_folder, save_path=save_path)
+        
+        # export exif json
+        if mode[5]:
+            roll.export_exif_json(exif_path)
+            progress_index += 1
+            db.progress(
+                pre=f"[{index}]",
+                current=progress_index,
+                total=total_length,
+                post=f"Exporting EXIF JSON...",
+                mode="info"
+            )
+
+        # Progress update
         db.progress(
             pre=f"[{index}]",
             current=total_length,
             total=total_length,
-            post=f"[{img.index_str}] Finished archiving!",
+            post=f"Finished archiving!",
             mode="success"
         )
-
-        # export exif json
-        if mode[5]:
-            db.i(roll.dbIdx, 'Exporting EXIF JSON...')
-            roll.export_exif_json(exif_path)
-
-        
-
 
 # Library to handle file loading/offloading from local drive to external drive.
 # In short:
@@ -425,3 +473,13 @@ class importTool:
 #       /other/
 
 
+
+
+
+
+if __name__ == "__main__":
+    import subprocess
+    subprocess.run(
+        [sys.executable, "/Users/rja/Documents/Coding/film-photo-archive-manager/main.py"],
+        check=True
+    )
