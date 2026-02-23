@@ -192,17 +192,36 @@ class Renderer:
         self.rebate_metadata = []
         self.rebate_metadata_copies = []
 
-    def render(self, roll, P1=1, P2=1, P3=1):
+    def render(self, roll, P1=1, P2=1, P3=1, save=False, show=False, save_path=None):
         self.roll = roll
         self.extract_data()
         self.process_metadata()
         self.prepare_sheets()
+        canvasses = []
         if P1:
-            self.render_P1()
+            canvasses.append((self.render_P1(), None))
         if P2:
-            self.render_P2()
+            for i, canvas in enumerate(self.render_P2()):
+                canvasses.append((canvas, f"copies_{i+1}"))
         if P3:
-            self.render_P3()
+            canvasses.append((self.render_P3(), "info"))
+
+        if show:
+            db.i("[R]", "Rendering complete. Displaying sheets...")
+            for canvas in canvasses:
+                canvas[0].show()
+        
+        if save:
+            db.i("[R]", "Rendering complete. Saving sheets...")
+            for canvas, name in canvasses:
+                if save_path:
+                    basename = os.path.join(save_path, f"{self.roll.index_str}_contact_sheet")
+                else:
+                    basename = f"output/{self.roll.index_str}_contact_sheet"
+                suffix = ".png"
+                path = f"{basename}_{name}{suffix}" if name else f"{basename}{suffix}"
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                canvas.save(path)
         self.cleanup()
 
     def extract_data(self):
@@ -397,7 +416,7 @@ class Renderer:
                     best_cols, best_rows, best_k = cols, rows, k
 
         # primt optimal grid
-        db.i('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
+        # db.i('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
 
         return best_cols, best_rows, best_k
 
@@ -543,7 +562,7 @@ class Renderer:
         return metadata, metadata_copies
 
     def render_P3(self):
-
+        db.i("[R]", "Rendering contact sheet...", "Metadata")
         def get_str(img, max_lengths=None):
             string_arr = []
 
@@ -558,6 +577,7 @@ class Renderer:
 
                 string_arr.append(img.location if img.location else "---")
                 string_arr.append(img.state if img.state else "---")
+                string_arr.append(img.rawFileName.split(".")[0] if img.rawFileName else "???")
 
             if img.isCopy:
                 string_arr.append("")   # index
@@ -618,7 +638,9 @@ class Renderer:
         # build copy metadata and insert after main image metadata
         lines.append("")
         lines.append("")
-        lines.append("Edits:")
+        lines.append("")
+        lines.append("Edits")
+        lines.append("")
 
         for i in range(len(roll.images)):
             img = roll.images[i]
@@ -638,10 +660,11 @@ class Renderer:
             draw.text((self.to_px(self.margin), y), line, font=font, fill=font_color, anchor="la")
             
         self.render_title(canvas, "METADATA")
-        canvas.show()
+        return canvas
 
     def render_P2(self):
         if not self.roll.containsCopies: return
+        db.i("[R]", "Rendering contact sheet...", "Copies")
         tup = self.sheets[1]
         canvas = tup[0]
         draw = tup[1]
@@ -699,23 +722,23 @@ class Renderer:
         self.grid, self.grid_text, rows, cols = self.build_grid(rebates)
         n = rows * cols
         if n < len(images):
-            print(n, len(images))
             subsets = []
             for i in range(0, len(images), n):
                 subsets.append((images[i:i+n], metadata[i:i+n], rebates[i:i+n], keys[i:i+n]))
             for subset in subsets:
                 canvasses.append(self.render_images(canvas_temp.copy(), subset[0], subset[1], subset[2], keys=subset[3]))
         else:
-            print(n, len(images))
             canvasses.append(self.render_images(canvas_temp.copy(), images, metadata, rebates, keys=keys))
 
         # render
         for i, canvas_i in enumerate(canvasses):
             name = f'EDITS ({i+1}/{len(canvasses)})' # title
             canvas = self.render_title(canvas_i, title=name)
-            canvas.show()
+            canvasses[i] = canvas
+        return canvasses
 
     def render_P1(self):
+        db.i("[R]", "Rendering contact sheet...", "Main")
         tup = self.sheets[0]
         canvas = tup[0]
         draw = tup[1]
@@ -727,12 +750,8 @@ class Renderer:
 
         canvas = self.render_images(canvas_temp, images, metadata, rebates)
         canvas_temp = canvas.copy()
-
-        # build title(s)
-
-
         canvas = self.render_title(canvas_temp)
-        canvas.show()
+        return canvas
 
     def render_title(self, canvas, title=None, subtitle=None):
         """
