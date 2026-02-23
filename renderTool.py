@@ -16,8 +16,8 @@ import subprocess
 import sys
 
 DEBUG = 0
-WARNING = 1
-ERROR = 1
+WARNING = 0
+ERROR = 0
 db = debuggerTool(DEBUG, WARNING, ERROR)
 
 FORMATS = {
@@ -192,7 +192,7 @@ class Renderer:
         self.rebate_metadata = []
         self.rebate_metadata_copies = []
 
-    def render(self, roll, P1=1, P2=1, P3=1, save=False, show=False, save_path=None):
+    def render(self, roll, P1=1, P2=1, P3=1, save=False, show=False, output_folder=None, save_path=None):
         self.roll = roll
         self.extract_data()
         self.process_metadata()
@@ -200,28 +200,33 @@ class Renderer:
         canvasses = []
         if P1:
             canvasses.append((self.render_P1(), None))
-        if P2:
+        if P2 and self.roll.containsCopies:
             for i, canvas in enumerate(self.render_P2()):
                 canvasses.append((canvas, f"copies_{i+1}"))
         if P3:
             canvasses.append((self.render_P3(), "info"))
 
         if show:
-            db.i("[R]", "Rendering complete. Displaying sheets...")
+            db.d("[R]", "Rendering complete. Displaying sheets...")
             for canvas in canvasses:
                 canvas[0].show()
         
         if save:
-            db.i("[R]", "Rendering complete. Saving sheets...")
+            db.d("[R]", "Rendering complete. Saving sheets...")
             for canvas, name in canvasses:
-                if save_path:
-                    basename = os.path.join(save_path, f"{self.roll.index_str}_contact_sheet")
+                if output_folder:
+                    basename = os.path.join(output_folder, f"{self.roll.index_str}_contact_sheet")
                 else:
                     basename = f"output/{self.roll.index_str}_contact_sheet"
                 suffix = ".png"
                 path = f"{basename}_{name}{suffix}" if name else f"{basename}{suffix}"
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 canvas.save(path)
+            if save_path:
+                # also save main sheet to specified path
+                path = os.path.join(save_path, f"{self.roll.index_str}_contact_sheet.png")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                canvasses[0][0].save(path)
         self.cleanup()
 
     def extract_data(self):
@@ -416,7 +421,7 @@ class Renderer:
                     best_cols, best_rows, best_k = cols, rows, k
 
         # primt optimal grid
-        # db.i('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
+        # db.d('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
 
         return best_cols, best_rows, best_k
 
@@ -562,7 +567,7 @@ class Renderer:
         return metadata, metadata_copies
 
     def render_P3(self):
-        db.i("[R]", "Rendering contact sheet...", "Metadata")
+        db.d("[R]", "Rendering contact sheet...", "Metadata")
         def get_str(img, max_lengths=None):
             string_arr = []
 
@@ -664,7 +669,7 @@ class Renderer:
 
     def render_P2(self):
         if not self.roll.containsCopies: return
-        db.i("[R]", "Rendering contact sheet...", "Copies")
+        db.d("[R]", "Rendering contact sheet...", "Copies")
         tup = self.sheets[1]
         canvas = tup[0]
         draw = tup[1]
@@ -738,7 +743,7 @@ class Renderer:
         return canvasses
 
     def render_P1(self):
-        db.i("[R]", "Rendering contact sheet...", "Main")
+        db.d("[R]", "Rendering contact sheet...", "Main")
         tup = self.sheets[0]
         canvas = tup[0]
         draw = tup[1]
