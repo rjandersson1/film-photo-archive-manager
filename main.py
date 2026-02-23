@@ -54,13 +54,13 @@ importlib.reload(importTool)
 
 # ======================== Setup Vars ================================
 DEVMODE = 1         # If true, work in local dir. If false, work in production dir. Contains rolls 72, 74, 83, 85
-CLEANMODE = 1    # import from cleaned library
+CLEANMODE = 0    # import from cleaned library
 EXTERNAL_SSD = 0
 
-rolls_to_import = 'all'
+# rolls_to_import = 'all'
 # rolls_to_import = [72, 74, 83, 85]
 # rolls_to_import = '31-40'
-# rolls_to_import = [72]
+rolls_to_import = [85]
 
 
 # deine wallpaper path
@@ -124,25 +124,16 @@ for i in range(3):
 # =================================================================================
 # =================================================================================
 
+roll = collection.rolls[0]
+for roll in collection.rolls:
+    renderer = renderTool.Renderer()
+    renderer.render(roll,1,1,1, save=1, show=0, save_path=os.path.join(roll.directory, "contact_sheets"))
 
+# img = roll.images[0]
+# img.getInfo()
 
-
-# for roll in collection.rolls:
-#     importer.cleanRoll(roll, library_path=library_clean, mode=[1,1,1,1,0,1])
-
-# TODO: bug when exporting a roll, raw missing?
-
-# for roll in collection.rolls:
-#     print('Cameras on roll:', roll.cameras)
-#     for img in roll.images_all:
-#         print(img.index, img.camera, '  -->  ', img.cam)
-
-
-
-
-
-
-
+# for img in roll.images_all:
+#     print(img.index_str, int(img.isCopy), img.filmformat, img.filmtype, int(img.isSquare), int(img.isPano), img.aspectRatio)
 
 # =================================================================================
 for i in range(3):
@@ -150,22 +141,7 @@ for i in range(3):
 print("===================================================================")
 db.i('[I]', f"Runtime: {time() - runtime_t0:.2f}s")
 
-# display_preview = 1
-# display_preview = 0
-# display_info = 0
-# display_info = 1
 
-# preview_size = 75
-# for roll in collection.rolls:
-#     for img in roll.images:
-#         if img.containsCopies and display_info:
-#             print(f'[{img.roll.index_str}][{img.index_str}]\t{img.copyCount}x')
-#             print(f'\t\tMASTER\t{img.index_original}\t{img.copyType}\t{img.rawFileName}\t{img.fileSize/1024/1024:.0f}Mb\t{img.mpx:.0f}MP\t{img.aspectRatio:.2f}:1\tisColor:{int(img.isColor)}\tisBlackAndWhite:{int(img.isBlackAndWhite)}\tisGrayscale:{int(img.isGrayscale)}')
-#             if display_preview: img.display(preview_size)
-#             for copy in img.copies:
-#                 if display_preview: copy.display(preview_size)
-#                 print(f'\t\tCOPY\t{copy.index_original}\t{copy.copyType}\t{copy.rawFileName}\t{copy.fileSize/1024/1024:.0f}Mb\t{copy.mpx:.0f}MP\t{copy.aspectRatio:.2f}:1\tisColor:{int(copy.isColor)}\tisBlackAndWhite:{int(copy.isBlackAndWhite)}\tisGrayscale:{int(copy.isGrayscale)}')
-#             print('\n')
 
 
 # importer.generate_wallpapers_bw(collection.rolls, wallpaper_path, rating_limit=3, size_limit=1)
