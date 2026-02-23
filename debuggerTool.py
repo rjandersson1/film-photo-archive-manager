@@ -99,7 +99,7 @@ class debuggerTool:
         *,
         width: int = 28,
         mode: str = "info",
-        every: float = 0.03,
+        every: float = 0.00,
         show_eta: bool = True
     ):
         if total <= 0:
@@ -164,7 +164,8 @@ class debuggerTool:
         pad = max(self._progress_last_len - len(line), 0)
         out = "\r" + line + (" " * pad)
         if current == total and mode == 'success':
-            out = out + '\n'
+            # out = out + '\n'
+            out = "\r" + (" " * 200) + "\r" + line + '\n'
 
         sys.stdout.write(out)
         sys.stdout.flush()
@@ -176,7 +177,6 @@ class debuggerTool:
             self._progress_last_time = 0.0
             self._progress_active = False
 
-                  
 
 # example usage
 DEBUG = 0
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     for img_idx in range(images):
         for step in ("RAW", "JPG", "preview"):
             # simulate work
-            time.sleep(0.01)
+            time.sleep(0.1)
 
             done += 1
             db.progress(
