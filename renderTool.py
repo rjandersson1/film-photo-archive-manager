@@ -15,9 +15,9 @@ from debuggerTool import debuggerTool
 import subprocess
 import sys
 
-DEBUG = 1
+DEBUG = 0
 WARNING = 0
-ERROR = 0
+ERROR = 1
 db = debuggerTool(DEBUG, WARNING, ERROR)
 
 FORMATS = {
@@ -629,7 +629,7 @@ class Renderer:
 
         canvas = self.sheets[2][0].copy()
         font_color = (255,255,255,255)
-        font_size = self.to_px(3) # mm
+        font_size = self.to_px(2.5) # mm
         row_gap = self.to_px(0.75)
         font = ImageFont.truetype(
             "fonts/JMH Typewriter mono Bold.ttf",
@@ -703,11 +703,19 @@ class Renderer:
                 k = 0
                 for cpy in img.copies:
                     k+=1
+                    
+                    try:
+                        md = self.rebate_metadata_copies[j][k]
+                    except Exception:
+                        db.e("[R]", "Too many frames for page, skipping!")
+                        continue
                     images.append(cpy)
+                    metadata.append(md)
+
                     if cpy.aspectRatio == img.aspectRatio:
                         keys.append(None)
                         rebates.append(self.get_rebate(img.filmformat))
-                    elif cpy.filmformat in ['135']:
+                    elif cpy.filmformat in ['135', '35mm']:
                         keys.append(None)
                         if cpy.isPano:
                             rebates.append(self.get_rebate(str(cpy.filmformat)+"-pano"))
@@ -715,6 +723,8 @@ class Renderer:
                         if cpy.isSquare:
                             # rebates.append(self.get_rebate(str(cpy.filmformat)+"-square")) # TODO: too small to fit metadata
                             rebates.append(self.get_rebate(str(cpy.filmformat)+""))
+                        else:
+                            rebates.append(self.get_rebate(str(cpy.filmformat)))
                     elif cpy.filmformat in ['6x7', '6x6', '6x4.5']:
                         if cpy.isSquare:
                             rebates.append(self.get_rebate("6x6"))
@@ -726,12 +736,6 @@ class Renderer:
                         keys.append(None)
                         db.e("[R]", "Could not ID format for copy!")
                     
-                    try:
-                        md = self.rebate_metadata_copies[j][k]
-                    except Exception:
-                        db.e("[R]", "Too many frames for page, skipping!")
-                        continue
-                    metadata.append(md)
                 j+=1
 
         canvasses = []
