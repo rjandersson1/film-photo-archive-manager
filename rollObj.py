@@ -31,6 +31,7 @@ class rollObj:
         # File handling
         self.directory = directory                  # subfolder directory eg. \...\2022 - 135\2_22-06-12 Gold 200 Zurich
         self.name = os.path.basename(directory)     # eg. '2_22-06-12 Gold 200 Zurich'
+        self.newName = None                         # cleaned name after processing, used for renaming files 
         self.jpgDirs = None                         # sPath to folder with jpg files
         self.rawDirs = None                         # Path to folder with raw files
         self.rawMissing = None                      # Flag for whether raw files could be found
@@ -98,6 +99,7 @@ class rollObj:
         self.process_copies() # check for copies and nest them in the master copy object
         self.update_file_metadata()
         self.generate_title()
+        self.update_name()
         self.verify_roll()
 
     # 2) Identify filepaths & gather directory data
@@ -1090,6 +1092,11 @@ class rollObj:
             db.e(self.dbIdx, 'Camera attribute cast error!')
         
 
+    def update_name(self):
+        # generate cleaned name based on template: {index}_{startDate}-{endDate}_{stock}_{cam}_{locations}
+        locations_str  = '+'.join(self.locations) if self.locations else 'Unknown'
+        roll_folder_name = f"{self.index_str}_{self.startDate.strftime('%y')}-{self.startDate.strftime('%m')}-{self.endDate.strftime('%m')}_{self.stk}_{self.cam}_{locations_str}"
+        self.newName = roll_folder_name
 
 
 if __name__ == "__main__":
