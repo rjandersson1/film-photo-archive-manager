@@ -342,7 +342,7 @@ class importTool:
                     pre=f"[{index}]",
                     current=progress_index,
                     total=total_length,
-                    post=f"[{img.index_str}] Copying RAW...",
+                    post=f"[{img.index_str}] Copying RAW.......",
                     mode="info"
                 )
                 self.copy_raw(img, scans_path)
@@ -354,7 +354,7 @@ class importTool:
                     pre=f"[{index}]",
                     current=progress_index,
                     total=total_length,
-                    post=f"[{img.index_str}] Copying JPG...",
+                    post=f"[{img.index_str}] Copying JPG.......",
                     mode="info"
                 )
                 self.copy_jpg(img, exports_path)
@@ -413,6 +413,16 @@ class importTool:
                 os.makedirs(contact_sheets_path)
             renderer = renderTool.Renderer()
             renderer.render(roll, 1,1,1, save=1, show=0, output_folder=output_folder, save_path=save_path)
+
+            # copy contact sheet to to export folder as well
+            contact_sheets_folder = os.path.join(library_path, 'film', 'library', 'contact sheets')
+            if not os.path.exists(contact_sheets_folder):
+                os.makedirs(contact_sheets_folder)
+            
+            # copy exported contact sheet from save_path/XXX_contact_sheet.png to contact_sheets_folder/XXX_contact_sheet.png
+            src_contact_sheet = os.path.join(save_path, f"{roll.index_str}_contact_sheet.png")
+            self.copy_file(src_contact_sheet, contact_sheets_folder)
+
         
         # export exif json
         if mode[5]:
