@@ -64,6 +64,7 @@ class rollObj:
         self.isInfrared = None
         self.isNegative = None
         self.isSlide = None
+        self.isTrichrome = None
 
         # Roll attributes
         self.process = None                         # Film development process (C41, E6, BNW), cast from stock info
@@ -669,6 +670,41 @@ class rollObj:
             # Unique dateExpose --> master
             if len(group) == 1:
                 master = group[0]
+
+                # hardcode fix: roll 50 exposure 16 is a copy of exposure 15
+                if self.index == 50 and master.index_original == 16:
+                    # find intended master (exposure 15) using stable index_original
+                    target = next((x for x in self.images if x.index_original == 15), None)
+
+                    if target is None:
+                        db.e(f'[{self.index_str}]', 'Hardcode 50:16 failed: exposure 15 not found', master.fileName)
+                        masters.append(master)  # fallback: keep as master
+                        continue
+
+                    db.w(
+                        f'[{self.index_str}]',
+                        'Hardcoding copy for roll 50, exposure 16 -> attach to exposure 15',
+                        master.fileName
+                    )
+
+                    self.containsCopies = True
+
+                    master.isOriginal = False
+                    master.isCopy = True
+                    master.containsCopies = False
+                    master.copyCount = 0
+                    master.copyType = 'trichrome'
+                    master.isTrichrome = True
+                    master.original = target
+
+                    if not hasattr(target, "copies") or target.copies is None:
+                        target.copies = []
+                    target.copies.append(master)
+                    target.containsCopies = True
+                    target.copyCount = len(target.copies)
+
+                    continue 
+
                 masters.append(master)
                 continue
 
@@ -1053,3 +1089,11 @@ class rollObj:
         if camera_error:
             db.e(self.dbIdx, 'Camera attribute cast error!')
         
+
+
+
+if __name__ == "__main__":
+    subprocess.run(
+        [sys.executable, "/Users/rja/Documents/Coding/film-photo-archive-manager/main.py"],
+        check=True
+    )
