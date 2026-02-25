@@ -106,7 +106,7 @@ class exposureObj:
         self.isCopy = None                  # Is duplicate, cast
         self.isGrayscale = None             # Is grayscale, EXIF
         self.isStitched = None              # Is stitched, EXIF
-        self.copyType = None                # Type of virtual copy (pano, BW, edit), string, derived
+        self.copyType = None                # Type of virtual copy (pano, BW, edit, trichrome), string, derived
         self.attributesCopies = {}
 
 
@@ -274,7 +274,7 @@ class exposureObj:
 
     # Define copy types and pass to relevant copies
     def update_copy_type(self):
-        if self.isCopy:
+        if self.isCopy and self.copyType is None:
             if self.isStitched or self.isPano:
                 self.copyType = 'pano'
             elif self.isColor and self.isGrayscale:
