@@ -86,14 +86,20 @@ class importTool:
 
         if roll.unmatched_raws:
             for file in roll.unmatched_raws:
-                self.copy_file(file, dest_folder)
+                self.copy_file_to_folder(file, dest_folder)
 
-    def copy_file(self, src_path, dest_folder):
+    def copy_file_to_folder(self, src_path, dest_folder):
         dest_path = os.path.join(dest_folder, os.path.basename(src_path))
         try:
             shutil.copy2(src_path, dest_path)
         except Exception as e:
             db.e(f'File Copy', f'Error copying file to {dest_path}: {e}')
+
+    def copy_file(self, src_path, dst_path):
+        try:
+            shutil.copy2(src_path, dst_path)
+        except Exception as e:
+            db.e(f'File Copy', f'Error copying file to {dst_path}: {e}')
 
     # copy simple jpg to dest folder with new naming convention
     def copy_jpg(self, img, dest_folder):
@@ -249,19 +255,18 @@ class importTool:
 
 
     # Cleans up a roll by copying jpg and raw files to correct folder within library
-    def cleanRoll(self, roll, library_path=None, mode=[1,1,1,1,1,1]):
+    def cleanRoll(self, roll, library_path=None, clean_raw=True, clean_jpg=True, clean_preview=True, clean_edits=True, clean_contact_sheet=True, clean_exif=True):
         """
         Cleans up a roll by copying jpg and raw files to correct folder within library.
 
         param roll: roll object to be cleaned
         param library_path: base path of library to copy files to. If None, defaults to '/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography'
-        param mode: list of 6 binary values indicating which operations to perform:
-            [0] copy raw files to scans folder
-            [1] copy main jpg files to exports folder
-            [2] copy preview files to previews folder
-            [3] copy edits / virtual copies to edits folder
-            [4] render contact sheet and save to contact sheets folder
-            [5] export exif json to exif folder
+        param clean_raw: whether to copy raw files
+        param clean_jpg: whether to copy main jpg files
+        param clean_preview: whether to copy preview files
+        param clean_edits: whether to copy edits / virtual copies
+        param clean_contact_sheet: whether to render and copy contact sheets
+        param clean_exif: whether to export exif json
         """
 
         if roll.index in [37]: return
@@ -291,14 +296,14 @@ class importTool:
 
 
         # convert locations to string list(['X','Y']) -> 'X+Y' for folder naming
-        locations_str  = '+'.join(roll.locations) if roll.locations else 'Unknown'
+        # locations_str  = '+'.join(roll.locations) if roll.locations else 'Unknown'
 
         # Define roll folder
         # prefix zeros on index so [001-999]
         index = roll.index_str
 
 
-        roll_folder_name = f"{index}_{date.strftime('%y')}-{date.strftime('%m')}-{roll.endDate.strftime('%m')}_{roll.stk}_{roll.cam}_{locations_str}"
+        roll_folder_name = roll.newName
         roll_base_path = os.path.join(library_path, 'film', 'library', date.strftime('%Y'), roll_folder_name)
 
         # Build subdirectories
@@ -322,12 +327,12 @@ class importTool:
         r = roll.countRaw if roll.rawMissing == False else 0
         c = roll.countCopies if roll.countCopies else 0
         total_length = (
-            r * mode[0] + # copy raw files
-            n * mode[1] + # copy main jpg files
-            m * mode[2] + # copy preview files
-            c * mode[3] + # copy edits / virtual copies
-            3 * m * mode[4] + # render contact sheets
-            1 * mode[5]   # export exif json
+            r * clean_raw + # copy raw files
+            n * clean_jpg + # copy main jpg files
+            m * clean_preview + # copy preview files
+            c * clean_edits + # copy edits / virtual copies
+            3 * m * clean_contact_sheet + # render contact sheets
+            1 * clean_exif   # export exif json
         )
 
 
@@ -336,7 +341,7 @@ class importTool:
         # Copy to directories
         for img in roll.images:
             # Copy raw if exists to scans
-            if mode[0] and img.rawFilePath:
+            if clean_raw and img.rawFilePath:
                 progress_index += 1
                 db.progress(
                     pre=f"[{index}]",
@@ -348,7 +353,7 @@ class importTool:
                 self.copy_raw(img, scans_path)
 
             # Copy main image jpg to exports
-            if mode[1]:
+            if clean_jpg:
                 progress_index += 1
                 db.progress(
                     pre=f"[{index}]",
@@ -360,7 +365,7 @@ class importTool:
                 self.copy_jpg(img, exports_path)
             
             # Copy previews if exists to previews
-            if mode[2]:
+            if clean_preview:
                 progress_index += 1
                 db.progress(
                     pre=f"[{index}]",
@@ -370,8 +375,8 @@ class importTool:
                     mode="info"
                 )
                 self.copy_preview(img, previews_path)
-# Copy edits / virtual copies to edits
-            if mode[3]:
+            # Copy edits / virtual copies to edits
+            if clean_edits:
                 for copy in img.copies:
                     progress_index += 1
                     db.progress(
@@ -386,7 +391,7 @@ class importTool:
 
 
         # copy over leftover raw files just in case
-        if mode[0]:
+        if clean_raw:
             progress_index += 1
             db.progress(
                 pre=f"[{index}]",
@@ -398,7 +403,7 @@ class importTool:
             self.copy_unmatched_raws(roll, unmatchedRAW_path)
 
         # Render contact sheets
-        if mode[4]:
+        if clean_contact_sheet:
             db.progress(
                 pre=f"[{index}]",
                 current=progress_index,
@@ -412,20 +417,22 @@ class importTool:
             if not os.path.exists(contact_sheets_path):
                 os.makedirs(contact_sheets_path)
             renderer = renderTool.Renderer()
-            renderer.render(roll, 1,1,1, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            renderer.render(roll, P1=1,P2=1,P3=1, save=1, show=0, output_folder=output_folder, save_path=save_path)
 
             # copy contact sheet to to export folder as well
             contact_sheets_folder = os.path.join(library_path, 'film', 'library', 'contact sheets')
             if not os.path.exists(contact_sheets_folder):
                 os.makedirs(contact_sheets_folder)
             
-            # copy exported contact sheet from save_path/XXX_contact_sheet.png to contact_sheets_folder/XXX_contact_sheet.png
+            # copy exported contact sheet from save_path/XXX_contact_sheet.png to contact_sheets_folder/{roll.newName}.png
             src_contact_sheet = os.path.join(save_path, f"{roll.index_str}_contact_sheet.png")
-            self.copy_file(src_contact_sheet, contact_sheets_folder)
+            dst_contact_sheet = os.path.join(contact_sheets_folder, f"{roll.newName}.png")
+            # print(src_contact_sheet, '\n'*4, dst_contact_sheet)
+            self.copy_file(src_contact_sheet, dst_contact_sheet)
 
         
         # export exif json
-        if mode[5]:
+        if clean_exif:
             roll.export_exif_json(exif_path)
             progress_index += 1
             db.progress(
