@@ -156,8 +156,13 @@ class exposureObj:
                 try:
                     self.index= int(n[1])
                 except Exception:
-                    db.e(self.roll.dbIdx, 'IDX identify error! Case (2)', f'{name} --> {n[1]}')
-                    self.index= None
+                    # Hardcode fix for roll [3]
+                    if self.roll.index == 3 and n[1] == 'Italy & Zug': # hardcode fix for roll 3, missing index in filename
+                        self.index = int(n[2].split('.')[0])
+                        self.index
+                    else:
+                        db.e(self.roll.dbIdx, 'IDX identify error! Case (2)', f'{name} --> {n[1]}')
+                        self.index= None
         
 
             # Case 3: 23-01-01 - Zurich - Ektar 100 - F3 - 3s - #2.jpg
@@ -208,6 +213,9 @@ class exposureObj:
                 rawPath = os.path.join(rawDir, (str(rawName)+".dng"))
                 if os.path.isfile(rawPath):
                     self.rawFilePath = rawPath
+        
+        if self.rawFileName == None:
+            db.e(self.dbIdx, "Could not ID raw file name from EXIF!", f'self._get_exif(("XMP-xmpMM", "PreservedFileName")) = {self._get_exif(("XMP-xmpMM", "PreservedFileName"))}')
 
         # Exposure attributes
         self.location   = self._get_exif(("IPTC", "City"))
@@ -582,7 +590,11 @@ class exposureObj:
 
     # Hardcode fix to update camera exif error on rolls [33, ...]
     def verify_camera(self):
-        def update_camera(self, make, model, path):
+        def update_camera(self, make, model, path, lensMake=None, lensModel=None):
+
+
+
+
             # write
             subprocess.run(
                 [
@@ -642,6 +654,33 @@ class exposureObj:
                 db.e(self.dbIdx, 'Updating exif: camera model error', f'({new_make}, {new_model})')
                 update_camera(self, new_make, new_model, self.filePath)
         
+        if self.roll.index == 3:
+            new_make = 'Canon'
+            new_model = 'Ugo'
+            if self.cameraBrand == 'SONY' or self.cameraModel == 'DSLR-A550':
+                db.e(self.dbIdx, 'Updating exif: camera model error', f'({new_make}, {new_model})')
+                update_camera(self, new_make, new_model, self.filePath)
+            if self.lensModel == 'DT 18-55mm F3.5-5.6 SAM':
+                db.e(self.dbIdx, 'Updating exif: lens model error')
+                # self.fNumber    = self._get_exif(("ExifIFD", "FNumber"), conv=float)
+
+                # shutter_str     = self._get_exif(("ExifIFD", "ShutterSpeedValue"))
+                subprocess.run(
+                    [
+                        "exiftool",
+                        "-overwrite_original",
+                        f"-ExifIFD:LensMake=",
+                        f"-ExifIFD:LensModel=",
+                        f"-ExifIFD:FNumber=",
+                        f"-ExifIFD:ShutterSpeedValue=",
+                        self.filePath,
+                    ],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+        
         if self.roll.index == 78:
             new_make = 'Rollei'
             new_model = '35S'
@@ -650,11 +689,11 @@ class exposureObj:
                 update_camera(self, new_make, new_model, self.filePath)
 
 
-
- 
-
     def verify_location(self):
-        def update_state(path, state):
+        def update_state(path, state=None, country=None, location=None):
+            # self.location   = self._get_exif(("IPTC", "City"))
+            # self.state      = self._get_exif(("IPTC", "Province-State"))
+            # self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
             subprocess.run(
                 [
                     "exiftool",
@@ -662,6 +701,12 @@ class exposureObj:
                     f"-IPTC:Province-State={state}",
                     f"-XMP-photoshop:State={state}",
                     f"-XMP-iptcCore:State={state}",
+                    f"-IPTC:Country-PrimaryLocationName={country}",
+                    f"-XMP-photoshop:Country={country}",
+                    f"-XMP-iptcCore:Country={country}",
+                    f"-IPTC:City={location}",
+                    f"-XMP-photoshop:City={location}",
+                    f"-XMP-iptcCore:City={location}",
                     "-IPTCDigest=",
                     path,
                 ],
@@ -715,8 +760,18 @@ class exposureObj:
             state = "Bologna"
             update_state(path, state)
 
+
         if self.location is None or self.state is None or self.country is None:
             if self.location is not None and self.state is None:
                 db.d(self.dbIdx, 'No state given, location error ignored.')
             else:
                 db.e(self.dbIdx, "Location Error!", f'{self.location}, {self.state}, {self.country}')
+
+
+
+
+if __name__ == "__main__":
+    subprocess.run(
+        [sys.executable, "/Users/rja/Documents/Coding/film-photo-archive-manager/main.py"],
+        check=True
+    )
