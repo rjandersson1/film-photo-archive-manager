@@ -313,8 +313,8 @@ class Renderer:
         """
         # margins in mm → px
         tm_mm = 1.5
-        th_mm = 0.0
-        if self.roll.filmformat in ['6x7', '6x6', '6x4.5']:
+        th_mm = 0.5
+        if self.roll.filmtype == '120':
             tm_mm = 2.5
             th_mm = 0.8
         tm = int(round(self.to_px(tm_mm)))
@@ -384,6 +384,7 @@ class Renderer:
         best_score = -1.0
 
         sheet_w, sheet_h = float(sheet_px[0]), float(sheet_px[1])
+        # adjusting manually
 
         for cols in range(1, n + 1):
             rows = math.ceil(n / cols)
@@ -410,39 +411,23 @@ class Renderer:
 
             # Constant row gaps (paper spacing) consume sheet height directly
             gaps = buffer_px * max(0, rows - 1)
-            avail_h_for_images = (sheet_h - gaps) - 125
+            avail_h_for_images = (sheet_h - gaps) - 0
             if avail_h_for_images <= eps:
                 continue
 
-            k = min(sheet_w / total_w, avail_h_for_images / total_h_images, 1.0)
-
-            used_w = total_w * k
-            used_h = total_h_images * k + gaps
-
-
-            col_bias = 1.0
-            if self.roll.filmformat in ['35mm', '135']:
-                if cols == 6:
-                    col_bias = 1.05 # prefer 6 cols
-                if cols < 6:
-                    col_bias = 0.95 # penalize fewer cols
-                
-            
+        if self.roll.filmformat in ['35mm', '135']:
+            best_cols = 5
+            best_rows = 8
+            best_k = 0.9301
+        else:
+            best_cols = 3
+            best_rows = 4
+            best_k = 0.9008
 
 
-            # maximize utilized area (fraction of available sheet area)
-            score = (used_w / sheet_w) * (used_h / sheet_h) * col_bias
-
-            if score > best_score + eps:
-                best_score = score
-                best_cols, best_rows, best_k = cols, rows, k
-            elif abs(score - best_score) <= eps:
-                # tie-break: prefer more columns; if tied, fewer rows
-                if cols > best_cols or (cols == best_cols and rows < best_rows):
-                    best_cols, best_rows, best_k = cols, rows, k
 
         # primt optimal grid
-        db.d('[R]', f"Optimal grid: {best_cols} cols x {best_rows} rows with scale factor {best_k:.4f} (score: {best_score:.4f})")
+        db.d('[R]', f"Grid: {best_cols} x {best_rows} @ 1:{best_k:.4f}")
 
         return best_cols, best_rows, best_k
 
@@ -458,13 +443,13 @@ class Renderer:
         sheet_px = (float(self.to_px(self.sheet_size[0])), float(self.to_px(self.sheet_size[1])))
 
         margin_px = float(self.to_px(self.margin))
-        margin_top_px = float(self.to_px(self.margin_top))
-        buffer_px = float(self.to_px(self.margin_rows))
+        margin_top_px = float(self.to_px(self.margin_top)) - 130
+        buffer_px = float(self.to_px(self.margin_rows)) - 20
 
         # define print area anchored by margins (not centered)
         print_area_px = (
-            float(self.to_px(self.sheet_size[0] - 2 * self.margin)),
-            float(self.to_px(self.sheet_size[1] - self.margin_top - self.margin)),
+            (sheet_px[0] - 2 * margin_px),
+            (sheet_px[1] - margin_top_px - margin_px),
         )
 
         n = min(int(self.framecount), len(rebates))
@@ -502,9 +487,12 @@ class Renderer:
         x_print0 = margin_px
         y_print0 = margin_top_px
 
-        # center grid block within print area
-        x0 = x_print0 + (print_area_px[0] - total_w) * 0.5
-        y0 = y_print0 + (print_area_px[1] - total_h) * 0.5
+
+        # top-center anchor for the grid block
+        anchor_tc = 205.0  # px from top of the *canvas* (absolute y)
+        anchor_tl = 60 # px from left of canvas (absolute x)
+        x0 = anchor_tl
+        y0 = anchor_tc
 
         # starts
         col_starts = [x0]
@@ -739,10 +727,13 @@ class Renderer:
                             rebates.append(self.get_rebate(str(cpy.filmformat)+""))
                         else:
                             rebates.append(self.get_rebate(str(cpy.filmformat)))
-                    elif cpy.filmformat in ['6x7', '6x6', '6x4.5']:
-                        if cpy.isSquare:
+                    elif cpy.filmtype == '120':
+                        if cpy.isSquare and cpy.filmformat == '6x6':
                             rebates.append(self.get_rebate("6x6"))
                             keys.append("6x6")
+                        if cpy.isSquare and cpy.filmformat == '6x7':
+                            rebates.append(self.get_rebate("6x7"))
+                            keys.append("6x7")
                         if cpy.isPano:
                             keys.append("6x17")
                             rebates.append(self.get_rebate("6x17"))
@@ -872,6 +863,20 @@ class Renderer:
             fill=font_color,
             anchor="la"
         )
+
+        if DEBUG:
+            # draw white filled rectangles from edge of canvas to 30px inwards on all four edges
+            border_offset = 30
+            w, h = canvas.size
+            
+            # Top border
+            draw.rectangle([0, 0, w, border_offset], fill=(255, 255, 255, 255))
+            # Bottom border
+            draw.rectangle([0, h - border_offset, w, h], fill=(255, 255, 255, 255))
+            # Left border
+            draw.rectangle([0, 0, border_offset, h], fill=(255, 255, 255, 255))
+            # Right border
+            draw.rectangle([w - border_offset, 0, w, h], fill=(255, 255, 255, 255))
 
         return canvas
 
