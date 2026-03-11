@@ -549,7 +549,7 @@ class Renderer:
                 "BC": str(img.index) if img.index else "???",
                 "TR": img.stk if img.stk else "???",
                 "BL": img.dateExposed.strftime("%y%m%d") if img.dateExposed else "???",
-                "BR": (str(img.rating) + 's') if img.rating else "???",
+                "BR": (str('¢'*img.rating)) if img.rating else " ",
             }
             metadata.append(md)
             
@@ -566,7 +566,7 @@ class Renderer:
                     i += 1
                     md_copy = md_main.copy()
                     md_copy["BC"] = str(copy.index)+"."+str(i) if copy.index else "???"
-                    md_copy["BR"] = (str(copy.rating) + 's') if copy.rating else "???"
+                    md_copy["BR"] = (str('¢'*img.rating)) if copy.rating else " "
                     md_copies.append(md_copy)
                 metadata_copies.append(md_copies)
         
@@ -583,7 +583,7 @@ class Renderer:
             if img.isOriginal:
                 string_arr.append(img.index_str)
                 string_arr.append(img.dateExposed.strftime("%y-%m-%d") if img.dateExposed else "???")
-                string_arr.append((str(img.rating) + "s") if img.rating else "???")
+                string_arr.append((rating_str(img.rating)) if img.rating else " ")
                 string_arr.append(img.lensModel if img.lensModel else "---")
 
                 string_arr.append(f"f/{img.fNumber}" if img.fNumber else "-")
@@ -596,7 +596,7 @@ class Renderer:
             if img.isCopy:
                 string_arr.append("")   # index
                 string_arr.append("")   # date
-                string_arr.append((str(img.rating) + "s") if img.rating else "???")
+                string_arr.append((rating_str(img.rating)) if img.rating else " ")
                 string_arr.append(img.copyType if img.copyType else "???")
                 string_arr.append("")   # fnum
                 string_arr.append("")   # shutter
@@ -612,6 +612,16 @@ class Renderer:
             string = "  ".join(string_arr)
             return string, string_arr
         
+        def rating_str(r):
+            if r is None:
+                return "???"
+            # string options:
+            # © = medium thick bar
+            # ® = thick bar
+            # ¡ = small star
+            # ¢ = large star
+            return "¢" * int(r)
+
         def get_max_lengths(roll):
             # get max string lengths for each, and return tuple of max lengths for formatting
             max_lengths_arr = []
