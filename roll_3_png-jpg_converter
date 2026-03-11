@@ -1,0 +1,43 @@
+from pathlib import Path
+from PIL import Image
+
+DESIRED_FOLDER = r'/Volumes/NVME_C/Film Scanning/2022 - 135/3_22-07-03 Gold 200 Italy & Zug/jpg'
+
+def convert_pngs_in_place(folder_path, quality=95):
+    folder = Path(folder_path)
+
+    if not folder.exists():
+        raise FileNotFoundError(f"Folder does not exist: {folder}")
+
+    png_files = list(folder.rglob("*.png"))
+
+    if not png_files:
+        print("No PNG files found.")
+        return
+
+    for png_path in png_files:
+        jpg_path = png_path.with_suffix(".jpg")
+
+        try:
+            with Image.open(png_path) as img:
+                # Handle transparency
+                if img.mode in ("RGBA", "LA"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[-1])
+                    img = background
+                else:
+                    img = img.convert("RGB")
+
+                img.save(jpg_path, "JPEG", quality=quality)
+
+            png_path.unlink()  # delete original PNG
+            print(f"Converted and removed: {png_path}")
+
+        except Exception as e:
+            print(f"Failed: {png_path}")
+            print(f"Reason: {e}")
+
+    print("Conversion complete.")
+
+if __name__ == "__main__":
+    convert_pngs_in_place(DESIRED_FOLDER)
