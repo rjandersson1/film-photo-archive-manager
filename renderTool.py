@@ -542,8 +542,10 @@ class Renderer:
         for img in self.roll.images:
         # build camlens and handle cases where lens is missing
             cam = img.cam
-            lns = img.lns if img.lns else "???"
-            camlns = cam + "/" + lns if cam and lns else cam
+            if not img.lns and img.lensModel:
+                db.w(img.dbIdx, 'Lns cast faliure!')
+            lns = ("/"+img.lns) if img.lns else ""
+            camlns = cam + lns if (cam and lns) else cam
             md = {
                 "TL": camlns,
                 "BC": str(img.index) if img.index else "???",
