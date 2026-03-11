@@ -140,10 +140,10 @@ class exposureObj:
             if ' - ' not in name:
                 n = name.split(' ') # [22-10-02, Ektar, 100, Seebach, 1]
                 try:
-                    if n[-1] == '1-2': # hardcode fix for [009] 22-08-23 Portra 800 Zug 1-2.jpg
-                        n[-1] = 1
+                    # if n[-1] == '1-2': # hardcode fix for [009] 22-08-23 Portra 800 Zug 1-2.jpg
+                    #     n[-1] = 1
                     self.index= int(n[-1])
-                    if self.roll.index == 9 and self.index > 1: # hardcode fix for roll 9, indexes shifted by 1
+                    if self.roll.index == 9: # hardcode fix for roll 9, indexes shifted by 1
                         self.index += 1 # shift all indices by 1
                 except Exception:
                     db.e(self.roll.dbIdx, 'IDX identify error! Case (1)', f'{name} --> {n[-1]}')
@@ -203,16 +203,41 @@ class exposureObj:
 
         if self.roll.rawDirs and self.rawFileName:
             rawDir = self.roll.rawDirs[0]
-            rawName = self.rawFileName.split('.')[0] 
-            if rawName == -1 or rawDir == -1:
+            rawStem = os.path.splitext(str(self.rawFileName))[0]
+
+            if rawStem == -1 or rawDir == -1 or rawStem is None or rawDir is None:
                 self.rawFilePath = None
             else:
-                rawPath = os.path.join(rawDir, (rawName+".ARW"))
-                if os.path.isfile(rawPath):
-                    self.rawFilePath = rawPath
-                rawPath = os.path.join(rawDir, (str(rawName)+".dng"))
-                if os.path.isfile(rawPath):
-                    self.rawFilePath = rawPath
+                # core match: take leading token like DSC01234, ignore suffixes (-HDR, -Pano, etc.)
+                m = re.match(r"^([A-Za-z]*\d+)", rawStem.strip())
+                core = m.group(1) if m else rawStem.strip().split("-")[0].split("_")[0].split(" ")[0]
+
+                matches = []
+                try:
+                    for name in os.listdir(rawDir):
+                        stem, ext = os.path.splitext(name)
+                        ext_l = ext.lower()
+                        if ext_l not in (".arw", ".dng"):
+                            continue
+
+                        m2 = re.match(r"^([A-Za-z]*\d+)", stem.strip())
+                        stem_core = m2.group(1) if m2 else stem.strip().split("-")[0].split("_")[0].split(" ")[0]
+
+                        if stem_core == core:
+                            path = os.path.join(rawDir, name)
+                            if os.path.isfile(path):
+                                matches.append(path)
+                except FileNotFoundError:
+                    matches = []
+
+                if len(matches) == 1:
+                    self.rawFilePath = matches[0]
+                elif len(matches) == 0:
+                    self.rawFilePath = None
+                else:
+                    self.rawFilePath = None
+                    db.e(self.dbIdx, "Error finding raw path! Duplicate DSC files")
+                
         
         if self.rawFileName == None:
             db.e(self.dbIdx, "Could not ID raw file name from EXIF!", f'self.get_exif(("XMP-xmpMM", "PreservedFileName")) = {self.get_exif(("XMP-xmpMM", "PreservedFileName"))}')
