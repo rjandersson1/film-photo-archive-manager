@@ -322,11 +322,14 @@ class rollObj:
             db.d(f'[{self.index_str}]','Fetching EXIF...')
             data = self.fetch_exif(path)
             exif = data[0]
-            if exif is not None:
-                image.set_exif(exif)
-            else:
+
+            if exif is None:
                 db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED')
-            return
+                return
+            if 'Negative Lab Pro' not in exif.get('IFD0').get('Software'):
+                db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED', 'Metadata doesnt contain NLP info')
+                return
+            image.set_exif(exif)
 
         # Else, handle all files in buffer
         else:
@@ -387,6 +390,11 @@ class rollObj:
             
             # Cast exif back to objects
             for exif in data:
+                # Check exif valid
+                if exif is None:
+                    db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED')
+                if 'Negative Lab Pro' not in exif.get('IFD0', {}).get('Software', ''):
+                    db.e(f'[{self.index_str}]', 'EXIF FETCH FAILED', 'Metadata does not contain NLP info')
                 exif_path = exif.get("SourceFile")
 
                 if exif_path not in pathsToFetch:
@@ -426,8 +434,10 @@ class rollObj:
             "-ExifIFD:ISO",
             "-ExifIFD:FNumber",
             "-ExifIFD:ShutterSpeedValue",
+            "-ExifIFD:ExposureTime",
             "-ExifIFD:DateTimeOriginal",
             "-ExifIFD:CreateDate",
+            "-IFD0:Software",
             "-IFD0:Make",
             "-IFD0:Model",
             "-ExifIFD:LensMake",
