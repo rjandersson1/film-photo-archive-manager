@@ -19,7 +19,7 @@ import glob
 from rollObj import rollObj
 from debuggerTool import debuggerTool
 
-DEBUG = 1
+DEBUG = 0
 WARNING = 1
 ERROR = 1
 
@@ -577,7 +577,7 @@ class collectionObj:
             return
 
         new_roll = rollObj(directory=path_roll, collection=self)
-        new_roll.preprocess_roll()
+        if not new_roll.preprocess_roll(): return None
         new_roll.process_roll()
         self.rolls.append(new_roll)
         return
@@ -628,7 +628,6 @@ class collectionObj:
             return
 
         for index in target_indices:
-
             self.import_roll(index)
 
     def get_import_indices(self, rolls):
