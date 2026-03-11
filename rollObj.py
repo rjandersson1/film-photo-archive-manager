@@ -841,13 +841,17 @@ class rollObj:
                         self.countJpg += 1
         self.sizeRaw = 0
         self.countRaw = 0
-        if self.rawDirs and self.rawDirs[0] != -1:
-            for dir in self.rawDirs:
-                for file in os.listdir(dir):
-                    if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')):
-                        file_path = os.path.join(dir, file)
-                        self.sizeRaw += os.path.getsize(file_path)
-                        self.countRaw += 1
+        for img in self.images_all:
+            self.countRaw += 1
+            if img.rawFilePath:
+                self.sizeRaw += os.path.getsize(img.rawFilePath)
+        # if self.rawDirs and self.rawDirs[0] != -1:
+        #     for dir in self.rawDirs:
+        #         for file in os.listdir(dir):
+        #             if file.lower().endswith(('.arw', '.dng', '.tif', '.tiff')) and not (file.lower().startswith('._')):
+        #                 file_path = os.path.join(dir, file)
+        #                 self.sizeRaw += os.path.getsize(file_path)
+        #                 self.countRaw += 1
         
         self.sizeAll = self.sizeJpg + self.sizeRaw
 
