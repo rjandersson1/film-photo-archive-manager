@@ -589,7 +589,7 @@ class collectionObj:
         # Identify years in library
         paths_years = []
         for path in os.listdir(path_library):
-            if os.path.isdir(os.path.join(path_library, path)) and re.match(r'20\d{2}', path):
+            if os.path.isdir(os.path.join(path_library, path)) and re.match(r'20\d{2}', path) or path == 'Temp':
                 paths_years.append(os.path.join(path_library, path))
 
         # Index folders from each year
@@ -600,7 +600,12 @@ class collectionObj:
                 folder_path = os.path.join(path_year, folder)
                 if os.path.isdir(folder_path):
                     # Get index from folder name eg 11_22-10-03 Ektar 100 Zurich Flims Andeer --> 11 or 011_22-10-03 Ektar 100 Zurich Flims Andeer --> 11
-                    index = folder.split('_')[0]
+                    if '_' in folder:
+                        index = folder.split('_')[0]
+                    elif ' - ' in folder:
+                        index = folder.split(' - ')[0]
+                    else:
+                        db.e('[C]',f'Could not ID roll index from folder name!', folder)
                     # build list and sort by index
                     paths_rolls.append((index, folder_path))
                     paths_rolls = sorted(paths_rolls, key=lambda x: int(x[0]))
@@ -649,3 +654,10 @@ class collectionObj:
             print(f"[E]\tInvalid input for importing rolls: {rolls}")
             return -1
         return target_indices
+
+
+if __name__ == "__main__":
+    subprocess.run(
+        [sys.executable, "/Users/rja/Documents/Coding/film-photo-archive-manager/main.py"],
+        check=True
+    )
