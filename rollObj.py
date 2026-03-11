@@ -1046,10 +1046,59 @@ class rollObj:
                         raw_filenames.add(file)
 
         # Walk through all images and copies and ensure raw file exists. If exists, remove from set. Print remaining unmatched raws at end.
-        unmatched_raws = raw_filenames.copy()
+        unmatched_raws = set()
+        for filename in raw_filenames:
+            if '-Pano' in filename:
+                out = filename.split('-Pano')[0]
+            if '-HDR' in filename:
+                out = filename.split('-HDR')[0]
+            else:
+                out = filename.split('.')[0]
+            unmatched_raws.add(out)
 
+
+        # Hardcode fix for raw file matching roll 9 (pano naming + path casting)
+        if self.index == 9:
+            cleaned_unmatched_raws = set()
+
+            for file in unmatched_raws:
+                stem, ext = os.path.splitext(file)
+
+                # normalize pano-derived raws to the base .ARW name for matching logic
+                if "-Pano" in stem:
+                    while stem.endswith("-Pano"):
+                        stem = stem[:-5]
+                    match_name = stem + ".ARW"
+                    cleaned_unmatched_raws.add(match_name)
+                else:
+                    match_name = file
+                    cleaned_unmatched_raws.add(match_name)
+
+                # cast rawFilePath for any image/copy that claims this match_name
+                for img in self.images:
+                    if img.rawFileName == match_name:
+                        for rawDir in self.rawDirs:
+                            candidate = os.path.join(rawDir, file)  # real on-disk file (e.g. *-Pano.dng or pano x.tif)
+                            if os.path.exists(candidate):
+                                img.rawFilePath = candidate
+                                break
+
+                    for copy in img.copies:
+                        if copy.rawFileName == match_name:
+                            for rawDir in self.rawDirs:
+                                candidate = os.path.join(rawDir, file)
+                                if os.path.exists(candidate):
+                                    copy.rawFilePath = candidate
+                                    break
+
+            # enforce invariant: if rawFilePath exists, rawFileName == basename(rawFilePath)
+            for img in self.images_all:
+                if img.rawFilePath:
+                    img.rawFileName = os.path.basename(img.rawFilePath)
+            unmatched_raws = set(raw_filenames)
+        
         for img in self.images:
-            imgRawName = img.rawFileName
+            imgRawName = img.rawFileName.split('.')[0]
             if imgRawName in unmatched_raws:
                 unmatched_raws.discard(imgRawName)
             else:
@@ -1069,7 +1118,8 @@ class rollObj:
                         if pano_raw_candidates:
                             new_raw_name = pano_raw_candidates[0]
                             copy.rawFileName = new_raw_name
-                            copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
+                            if copy.rawFilePath:
+                                copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
                             unmatched_raws.discard(new_raw_name)
                             db.d(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
                         else:
@@ -1084,10 +1134,27 @@ class rollObj:
             for rawDir in self.rawDirs:
                 for rawFile in unmatched_files:
                     rawPath = os.path.join(rawDir, rawFile)
+                    if rawFile.startswith('._'):
+                        continue
                     if os.path.exists(rawPath):
                         self.unmatched_raws.append(rawPath)
-
-            db.w(f'[{self.index_str}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
+            if len(self.unmatched_raws) > 0:
+                db.w(f'[{self.index_str}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
+        
+        for img in self.images_all:
+            rawFileName_ending = img.rawFileName.split('.')[-1]
+            rawFilePath_ending = os.path.basename(img.rawFilePath).split('.')[-1] if img.rawFilePath else None
+            if rawFileName_ending != rawFilePath_ending:
+                if rawFilePath_ending:
+                    db.d(img.dbIdx, 'Updating raw file name to actual path', f'{img.rawFileName} -> {os.path.basename(img.rawFilePath)}')
+                    img.rawFileName = os.path.basename(img.rawFilePath)
+                elif rawFilePath_ending != None:
+                    db.e(img.dbIdx, 'RAW file extension mismatch between image rawFileName and rawFilePath!', f'{rawFileName_ending} vs {rawFilePath_ending}')
+            
+            if img.rawFileName.startswith('._'):
+                db.e(img.dbIdx, 'MacOS [._] in rawFileName')
+            if os.path.basename(img.rawFilePath).startswith('._') if img.rawFilePath else None:
+                db.e(img.dbIdx, 'MacOS [._] in rawFilePath')
 
     # Verify attributes on roll and print a summary
     def verify_roll(self):
