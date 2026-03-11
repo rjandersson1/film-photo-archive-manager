@@ -11,7 +11,7 @@ from time import time, sleep
 from PIL import Image
 import renderTool
 
-DEBUG = 1
+DEBUG = 0
 WARNING = 1
 ERROR = 1
 db = debuggerTool(DEBUG, WARNING, ERROR) 
@@ -63,6 +63,9 @@ class importTool:
         src_path = img.rawFilePath
         # define dest path
         dest_path = os.path.join(dest_folder, img.rawFileName)
+
+
+        db.d(img.dbIdx, 'Copying raw: ', f'{os.path.basename(src_path)} --> {os.path.basename(dest_path)}')
 
         if src_path is None:
             return
@@ -306,6 +309,10 @@ class importTool:
         roll_folder_name = roll.newName
         roll_base_path = os.path.join(library_path, 'film', 'library', date.strftime('%Y'), roll_folder_name)
 
+        if os.path.exists(roll_base_path):
+            shutil.rmtree(roll_base_path)
+            os.makedirs(roll_base_path)
+
         # Build subdirectories
         scans_path = os.path.join(roll_base_path, '01_scans')
         exports_path = os.path.join(roll_base_path, '02_exports')
@@ -324,20 +331,25 @@ class importTool:
         # init progress bar
         n = len(roll.images)
         m = len(roll.images_all)
-        r = roll.countRaw if roll.rawMissing == False else 0
-        c = roll.countCopies if roll.countCopies else 0
+        alpha = 2.6
+        r = roll.countRaw
+        c = roll.countCopies
+        if c is None: c = 0
+        if r is None: r = 0
         total_length = (
             r * clean_raw + # copy raw files
             n * clean_jpg + # copy main jpg files
             m * clean_preview + # copy preview files
             c * clean_edits + # copy edits / virtual copies
-            3 * m * clean_contact_sheet + # render contact sheets
+            round(alpha * m * clean_contact_sheet) + # render contact sheets
             1 * clean_exif   # export exif json
         )
 
+        db.d(roll.dbIdx, 'total_length:', f'\nn={n}\nm={m}\nr={r}\nc={c}')
 
         progress_index = 0
-        
+
+
         # Copy to directories
         for img in roll.images:
             # Copy raw if exists to scans
@@ -404,20 +416,47 @@ class importTool:
 
         # Render contact sheets
         if clean_contact_sheet:
-            db.progress(
-                pre=f"[{index}]",
-                current=progress_index,
-                total=total_length,
-                post=f"Rendering contact sheets...",
-                mode="info"
-            )
+
             progress_index += 3 * m
             output_folder = contact_sheets_path
             save_path = roll_base_path
             if not os.path.exists(contact_sheets_path):
                 os.makedirs(contact_sheets_path)
             renderer = renderTool.Renderer()
-            renderer.render(roll, P1=1,P2=1,P3=1, save=1, show=0, output_folder=output_folder, save_path=save_path)
+
+            # Render metadata page
+            db.progress(
+                pre=f"[All] [1/3]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheets info...",
+                mode="info"
+            )
+            renderer.render(roll, P1=0,P2=0,P3=1, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            progress_index += round(alpha / 5 * m)
+
+            # Render main page
+            db.progress(
+                pre=f"[All] [2/3]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheet...",
+                mode="info"
+            )
+            renderer.render(roll, P1=1,P2=0,P3=0, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            progress_index += round(alpha / 5 * m * 3)
+
+
+            # Render copies page
+            db.progress(
+                pre=f"[All] [3/3]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheets...",
+                mode="info"
+            )
+            renderer.render(roll, P1=0,P2=1,P3=0, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            progress_index += round(alpha / 5 * m)
 
             # copy contact sheet to to export folder as well
             contact_sheets_folder = os.path.join(library_path, 'film', 'library', 'contact sheets')
@@ -429,8 +468,9 @@ class importTool:
             dst_contact_sheet = os.path.join(contact_sheets_folder, f"{roll.newName}.png")
             # print(src_contact_sheet, '\n'*4, dst_contact_sheet)
             self.copy_file(src_contact_sheet, dst_contact_sheet)
-
         
+
+
         # export exif json
         if clean_exif:
             roll.export_exif_json(exif_path)
@@ -451,6 +491,7 @@ class importTool:
             post=f"Finished archiving!",
             mode="success"
         )
+        db.i(roll.dbIdx, roll_base_path)
 
 # Library to handle file loading/offloading from local drive to external drive.
 # In short:
