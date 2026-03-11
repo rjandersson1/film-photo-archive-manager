@@ -86,8 +86,9 @@ class rollObj:
 
     # Runs preprocessing until exif is required
     def preprocess_roll(self):
-        self.process_directory() # get data from folder names
+        if not self.process_directory(): return None # get data from folder names
         self.process_images() # fetch all images in the jpgDirs
+        return 1
 
     # Main loop: pass batch exif processing to roll level to improve runtime.
     def process_roll(self):
@@ -128,7 +129,7 @@ class rollObj:
             else:
                 db.e(self.dbIdx, 'JPG missing, but RAW exists!')
             self.images = []
-            return
+            return None
         elif rawDirs == []:
             db.w(self.dbIdx, 'RAW missing, but JPG exists!')
             self.rawMissing = True
@@ -149,7 +150,7 @@ class rollObj:
 
         if self.jpgDirs is None:
             self.images = []
-        return
+        return 1
 
     def generate_title(self):
         locations_str  = '+'.join(self.locations) if self.locations else 'Unknown'
