@@ -285,7 +285,11 @@ class Renderer:
         :return (canvas, draw, canvas_temp): Canvas + Draw objects
         """
 
-        canvas = Image.new("RGBA", (self.to_px(self.sheet_size[0]), self.to_px(self.sheet_size[1])), (0, 0, 0, 255))
+        color = (0,0,0,255)
+        if self.roll.isSlide:
+            color = (255,255,255,255)
+
+        canvas = Image.new("RGBA", (self.to_px(self.sheet_size[0]), self.to_px(self.sheet_size[1])), color)
         canvas_temp = canvas.copy()
         draw = ImageDraw.Draw(canvas)
 
@@ -344,6 +348,12 @@ class Renderer:
         :param key: LUT key {roll.filmformat}
         :return rebate: Image obj
         """
+
+        # handle slide film 135
+        if self.roll.isSlide:
+            # print("SLIDE REBATE")
+            key = f'{key}-slide'
+
         path = os.path.join(os.path.dirname(__file__), 'data', 'rebates', f'{key}.png')
         if not os.path.exists(path):
             db.e('[R]', f"Rebate image for format <{key}> not found. Skipping rebates.", path)
@@ -628,7 +638,11 @@ class Renderer:
             return max_lengths_arr
 
         canvas = self.sheets[2][0].copy()
-        font_color = (255,255,255,255)
+        if self.roll.isSlide:
+            # font_color = (0,0,0,255) # black
+            font_color = (117, 62, 20,255) # dark orange/brown
+        else:
+            font_color = (242,167,74,255) # rebate yellow
         font_size = self.to_px(2.5) # mm
         row_gap = self.to_px(0.75)
         font = ImageFont.truetype(
@@ -781,6 +795,12 @@ class Renderer:
         :param canvas: canvas img object
         :param title: title array
         """
+
+        text_color = (255,255,255,255) # white
+        if self.roll.isSlide:
+            text_color = (0,0,0,255) # black
+
+
         index = f'#{self.roll.index_str}' # index
         if title is None:
             name = self.roll.title # title
@@ -804,7 +824,7 @@ class Renderer:
 
         font_large = ImageFont.truetype(self.fontPath, self.to_px(6))
         font_small = ImageFont.truetype(self.fontPath, self.to_px(4))
-        font_color = (255, 255, 255, 255)  # white
+        font_color = text_color
         draw = ImageDraw.Draw(canvas)
 
         # Padding
