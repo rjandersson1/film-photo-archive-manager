@@ -275,15 +275,25 @@ class exposureObj:
         self.cameraModel = self.get_exif(("IFD0", "Model"))
         self.camera      = f"{self.cameraBrand} {self.cameraModel}" if self.cameraBrand and self.cameraModel else None
 
-        self.lens        = f"{self.lensBrand}f{self.lensModel}" if self.lensBrand and self.lensModel else ''
-        self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0] if self.lensModel and '/' in self.lensModel else ''
         self.lensBrand   = self.get_exif(("ExifIFD", "LensMake"))
         self.lensModel   = self.get_exif(("ExifIFD", "LensModel"))
+        self.lens        = f"{self.lensBrand} {self.lensModel}" if self.lensBrand and self.lensModel else ''
+
+        if self.lensModel:
+            if '/' in self.lensModel:
+                self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0]
+            else:
+                if 'mm' in self.lensModel:
+                    self.maxAperture = self.lensModel.split('f')[-1]
+                else:
+                    self.maxAperture = ''
+        else:
+            self.maxAperture = ''
 
         # TODO: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
         self.focalLength = self.get_exif(("ExifIFD", "FocalLength"),
                                         conv=lambda v: float(v.split(" ")[0]) if v else None)
-        self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if self.focalLength and self.maxAperture else ''
+        self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if (self.focalLength and self.maxAperture) else ''
 
         # Image data
         self.width  = self.get_exif(("File", "ImageWidth"), conv=int)
