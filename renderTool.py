@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 DEBUG = 0
-WARNING = 0
+WARNING = 1
 ERROR = 1
 db = debuggerTool(DEBUG, WARNING, ERROR)
 

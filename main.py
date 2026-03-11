@@ -59,8 +59,10 @@ EXTERNAL_SSD = 0
 
 # rolls_to_import = 'all'
 # rolls_to_import = [72, 74, 83, 85]
-# rolls_to_import = '31-40'
-rolls_to_import = [85]
+# rolls_to_import = [3, 9, 12, 13, 35, 37, 53, 65, 66, 84] # problem rolls
+# rolls_to_import = [3, 9, 12, 13]
+# rolls_to_import = '19-150'
+rolls_to_import = [84]
 
 
 # deine wallpaper path
@@ -84,8 +86,8 @@ else:
     sys.path.append(os.path.abspath(r'C:\A_Documents\Documents\Coding\Lightroom_FileFinder'))
     library = r'/Users/rja/Photography/Film Scanning'
     if EXTERNAL_SSD:
-        library = r'/Volumes/NVME_B/backup_NVME_A_08.05.2025/A_Documents/Photography/Film Scanning'
-        library_clean = r'/Volumes/NVME_B/photography'
+        library = r'/Volumes/NVME_C/Film Scanning'
+        library_clean = r'/Volumes/NVME_C/photography'
 
 print("===================================================================")
 print("===================================================================")
@@ -123,24 +125,28 @@ for i in range(3):
 
 # =================================================================================
 # =================================================================================
-
-roll = collection.rolls[0]
+renderer = renderTool.Renderer()
 for roll in collection.rolls:
-    renderer = renderTool.Renderer()
-    renderer.render(roll,1,1,1, save=1, show=0, save_path=os.path.join(roll.directory, "contact_sheets"))
+    # importer.cleanRoll(roll, library_path=library_clean, clean_raw=1, clean_jpg=0, clean_preview=0, clean_edits=0, clean_contact_sheet=0, clean_exif=0)
+    # importer.cleanRoll(roll, library_path=library_clean)
+    renderer.render(roll, P1=0, P2=0, P3=1, show=True)
+    
+    # for img in roll.images_all:
+        # print(os.path.basename(img.rawFileName) if img.rawFileName else None)
+    #     print(img.exif)
+    #     print('\n'*3)
+    #         print('\n'*1)
+    #         print(img.shutterSpeed)
+        # print(img.lns)
+    
+    continue
 
-# img = roll.images[0]
-# img.getInfo()
-
-# for img in roll.images_all:
-#     print(img.index_str, int(img.isCopy), img.filmformat, img.filmtype, int(img.isSquare), int(img.isPano), img.aspectRatio)
 
 # =================================================================================
 for i in range(3):
     print('\n')
 print("===================================================================")
 db.i('[I]', f"Runtime: {time() - runtime_t0:.2f}s")
-
 
 
 

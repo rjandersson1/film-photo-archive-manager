@@ -7,6 +7,7 @@ from PIL.ExifTags import TAGS
 import re
 import glob
 from datetime import datetime
+from datetime import timedelta
 from collections import OrderedDict
 from pathlib import Path
 import json
@@ -331,6 +332,7 @@ class rollObj:
                 return
             image.set_exif(exif)
 
+            
         # Else, handle all files in buffer
         else:
             pathsToFetch = {}
@@ -381,6 +383,7 @@ class rollObj:
                     
             else:
                 data = self.fetch_exif(pathList)
+
             t2 = time()
             dt = t2 - t1
             db.d(self.dbIdx, f'Fetched in EXIF {dt:.2f}s', f'{dt/len(pathList)*1000:.0f}ms per img')
@@ -463,14 +466,6 @@ class rollObj:
         )
 
         data = json.loads(result.stdout or "[]")
-
-
-
-        # print('\n'*100)
-
-        # print(data[1])
-
-        # print('\n'*10)
 
         return data if data else None
     
