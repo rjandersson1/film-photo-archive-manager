@@ -222,7 +222,7 @@ class Renderer:
                 path = f"{basename}_{name}{suffix}" if name else f"{basename}{suffix}"
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 canvas.save(path)
-            if save_path:
+            if save_path and P1:
                 # also save main sheet to specified path
                 path = os.path.join(save_path, f"{self.roll.index_str}_contact_sheet.png")
                 os.makedirs(os.path.dirname(path), exist_ok=True)
