@@ -48,3 +48,5 @@ data/
 # data/example\ metadata/**/*.tif
 # data/example\ metadata/**/*.dng
 # data/example\ metadata/**/*.arw
+Code overview.mk
+.DS_Store
