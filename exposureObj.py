@@ -195,7 +195,7 @@ class exposureObj:
             db.e(self.dbIdx, "No EXIF data available")
 
         # File attributes
-        self.rawFileName = self._get_exif(("XMP-xmpMM", "PreservedFileName"))
+        self.rawFileName = self.get_exif(("XMP-xmpMM", "PreservedFileName"))
         if self.roll.index == 12:
             db.w(self.dbIdx, 'hardcode workaround --> renaming exif-filename from .ARW to .dng to match raw files')
             self.rawFileName = self.rawFileName.split(".")[0]+".dng"
@@ -215,22 +215,22 @@ class exposureObj:
                     self.rawFilePath = rawPath
         
         if self.rawFileName == None:
-            db.e(self.dbIdx, "Could not ID raw file name from EXIF!", f'self._get_exif(("XMP-xmpMM", "PreservedFileName")) = {self._get_exif(("XMP-xmpMM", "PreservedFileName"))}')
+            db.e(self.dbIdx, "Could not ID raw file name from EXIF!", f'self.get_exif(("XMP-xmpMM", "PreservedFileName")) = {self.get_exif(("XMP-xmpMM", "PreservedFileName"))}')
 
         # Exposure attributes
-        self.location   = self._get_exif(("IPTC", "City"))
-        self.state      = self._get_exif(("IPTC", "Province-State"))
-        self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
+        self.location   = self.get_exif(("IPTC", "City"))
+        self.state      = self.get_exif(("IPTC", "Province-State"))
+        self.country    = self.get_exif(("IPTC", "Country-PrimaryLocationName"))
         self.verify_location() # hardcode fix for [035][34-35], [083][05]
 
-        self.stk        = self._get_exif(("XMP-iptcCore", "Scene"))
-        self.rating     = self._get_exif(("XMP-xmp", "Rating"), conv=int)
+        self.stk        = self.get_exif(("XMP-iptcCore", "Scene"))
+        self.rating     = self.get_exif(("XMP-xmp", "Rating"), conv=int)
         if self.rating is None:
             self.rating = 0
-        self.iso        = self._get_exif(("ExifIFD", "ISO"), conv=int)
-        self.fNumber    = self._get_exif(("ExifIFD", "FNumber"), conv=float)
+        self.iso        = self.get_exif(("ExifIFD", "ISO"), conv=int)
+        self.fNumber    = self.get_exif(("ExifIFD", "FNumber"), conv=float)
 
-        shutter_str     = self._get_exif(("ExifIFD", "ShutterSpeedValue"))
+        shutter_str     = self.get_exif(("ExifIFD", "ShutterSpeedValue"))
         if shutter_str:
             self.shutterSpeed = str(shutter_str)
             self.exposureTime = self._convertShutterspeed(self.shutterSpeed)
@@ -239,36 +239,36 @@ class exposureObj:
 
         # Datetime
         self.dateExposed = self._convertDateTime(
-            self._get_exif(("ExifIFD", "DateTimeOriginal"))
+            self.get_exif(("ExifIFD", "DateTimeOriginal"))
         )
         self.dateCreated = self._convertDateTime(
-            self._get_exif(("ExifIFD", "CreateDate"))
+            self.get_exif(("ExifIFD", "CreateDate"))
         )
 
         # Camera & lens
-        self.cameraBrand = self._get_exif(("IFD0", "Make"))
-        self.cameraModel = self._get_exif(("IFD0", "Model"))
+        self.cameraBrand = self.get_exif(("IFD0", "Make"))
+        self.cameraModel = self.get_exif(("IFD0", "Model"))
         self.camera      = f"{self.cameraBrand} {self.cameraModel}" if self.cameraBrand and self.cameraModel else None
 
-        self.lensBrand   = self._get_exif(("ExifIFD", "LensMake"))
-        self.lensModel   = self._get_exif(("ExifIFD", "LensModel"))
         self.lens        = f"{self.lensBrand}f{self.lensModel}" if self.lensBrand and self.lensModel else ''
         self.maxAperture = self.lensModel.split('/')[-1].split(' ')[0] if self.lensModel and '/' in self.lensModel else ''
+        self.lensBrand   = self.get_exif(("ExifIFD", "LensMake"))
+        self.lensModel   = self.get_exif(("ExifIFD", "LensModel"))
 
         # TODO: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
-        self.focalLength = self._get_exif(("ExifIFD", "FocalLength"),
+        self.focalLength = self.get_exif(("ExifIFD", "FocalLength"),
                                         conv=lambda v: float(v.split(" ")[0]) if v else None)
         self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if self.focalLength and self.maxAperture else ''
 
         # Image data
-        self.width  = self._get_exif(("File", "ImageWidth"), conv=int)
-        self.height = self._get_exif(("File", "ImageHeight"), conv=int)
+        self.width  = self.get_exif(("File", "ImageWidth"), conv=int)
+        self.height = self.get_exif(("File", "ImageHeight"), conv=int)
 
         # Duplicate attributes
-        self.isGrayscale = self._get_exif(("XMP-crs", "ConvertToGrayscale"),
+        self.isGrayscale = self.get_exif(("XMP-crs", "ConvertToGrayscale"),
                                         conv=lambda v: bool(int(v)) if str(v).isdigit() else bool(v),
                                         default=False)
-        self.isStitched  = self._get_exif(("XMP-aux", "IsMergedPanorama"),
+        self.isStitched  = self.get_exif(("XMP-aux", "IsMergedPanorama"),
                                         conv=bool,
                                         default=False)
         
@@ -293,7 +293,7 @@ class exposureObj:
                 self.copyType = 'edit'
 
     # Helper function to get nested EXIF values with optional conversion and default.
-    def _get_exif(self, path, conv=None, default=None):
+    def get_exif(self, path, conv=None, default=None):
         d = self.exif
         try:
             for p in path:
@@ -662,9 +662,9 @@ class exposureObj:
                 update_camera(self, new_make, new_model, self.filePath)
             if self.lensModel == 'DT 18-55mm F3.5-5.6 SAM':
                 db.e(self.dbIdx, 'Updating exif: lens model error')
-                # self.fNumber    = self._get_exif(("ExifIFD", "FNumber"), conv=float)
+                # self.fNumber    = self.get_exif(("ExifIFD", "FNumber"), conv=float)
 
-                # shutter_str     = self._get_exif(("ExifIFD", "ShutterSpeedValue"))
+                # shutter_str     = self.get_exif(("ExifIFD", "ShutterSpeedValue"))
                 subprocess.run(
                     [
                         "exiftool",
@@ -691,9 +691,9 @@ class exposureObj:
 
     def verify_location(self):
         def update_state(path, state=None, country=None, location=None):
-            # self.location   = self._get_exif(("IPTC", "City"))
-            # self.state      = self._get_exif(("IPTC", "Province-State"))
-            # self.country    = self._get_exif(("IPTC", "Country-PrimaryLocationName"))
+            # self.location   = self.get_exif(("IPTC", "City"))
+            # self.state      = self.get_exif(("IPTC", "Province-State"))
+            # self.country    = self.get_exif(("IPTC", "Country-PrimaryLocationName"))
             subprocess.run(
                 [
                     "exiftool",
