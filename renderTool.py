@@ -207,12 +207,10 @@ class Renderer:
             canvasses.append((self.render_P3(), "info"))
 
         if show:
-            db.d("[R]", "Rendering complete. Displaying sheets...")
             for canvas in canvasses:
                 canvas[0].show()
         
         if save:
-            db.d("[R]", "Rendering complete. Saving sheets...")
             for canvas, name in canvasses:
                 if output_folder:
                     basename = os.path.join(output_folder, f"{self.roll.index_str}_contact_sheet")
@@ -578,7 +576,6 @@ class Renderer:
         return metadata, metadata_copies
 
     def render_P3(self):
-        db.d("[R]", "Rendering contact sheet...", "Metadata")
         def get_str(img, max_lengths=None):
             string_arr = []
 
@@ -694,7 +691,6 @@ class Renderer:
 
     def render_P2(self):
         if not self.roll.containsCopies: return
-        db.d("[R]", "Rendering contact sheet...", "Copies")
         tup = self.sheets[1]
         canvas = tup[0]
         draw = tup[1]
@@ -775,7 +771,6 @@ class Renderer:
         return canvasses
 
     def render_P1(self):
-        db.d("[R]", "Rendering contact sheet...", "Main")
         tup = self.sheets[0]
         canvas = tup[0]
         draw = tup[1]
