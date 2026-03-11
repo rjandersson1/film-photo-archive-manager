@@ -612,7 +612,7 @@ class rollObj:
         # TODO: fix bug where stock attributes are derived after process_copies, but used in process copies. Need to refactor and rework updateFilmMetadata to occur beforehand, and then certain things like copy-relevant stuff needs to occur after the copies are processed.
     def process_copies(self):
         # Hardcode skip for rolls 6 and 12
-        if self.index in (6,12,68):
+        if self.index in (6,68):
             db.w(f'[{self.index_str}]', 'Skipping copy check on roll (hardcode workaround)', self.index_str)
             self.containsCopies = False
             for img in self.images:
@@ -673,6 +673,15 @@ class rollObj:
         # -------- Step 1: group by dateExposed --------
         groups = {}
         for img in self.images:
+
+            # hardcode fix [009][12/13] --> identical timestamps, manually adjust
+            if ((img.roll.index == 9 and img.index == 13) or (img.roll.index == 12 and img.index == 18)):
+                db.d(self.dbIdx, "Adjusting img.dateExposed to prevent grouping in copies")
+                img.dateExposed = img.dateExposed + timedelta(seconds=0.5)
+            if (img.roll.index == 53 and img.index == 22):
+                for original in img.roll.images_all:
+                    if original.index_original == 21:
+                        img.dateExposed = original.dateExposed # harcode pass  dateExposed to previous img so they are grouped as copies
             key = img.dateExposed
             groups.setdefault(key, []).append(img)
         
