@@ -57,6 +57,17 @@ importer = importTool.importTool()
 
 def main():
     t1 = time()
+
+    action, roll_selector, function = parse_cli_args(sys.argv)
+    rolls_to_import = [roll_selector]
+    if '-' in roll_selector:
+        rolls_to_import = str(roll_selector)
+    elif roll_selector == 'all':
+        rolls_to_import = 'all'
+    elif ',' in roll_selector:
+        rolls_to_import = roll_selector.split(',')
+    
+
     db.d('[A]', 'Archiver start')
     db.d('[A]', 'Configured paths', [
         f'PATH_LOCAL:    {PATH_LOCAL}',
@@ -67,6 +78,11 @@ def main():
         f'WARNING:       {WARNING}',
         f'ERROR:         {ERROR}',
     ])
+    db.i('[A]', 'CLI args parsed', [
+        f'action:        {action}',
+        f'roll selector: {roll_selector}',
+        f'function:      {function}',
+    ])
 
     # init collections (loc + ext)
     collection_loc = collectionObj.collectionObj(PATH_LOCAL)
@@ -75,31 +91,19 @@ def main():
     collection_loc.build_directory_tree()
     collection_ext.build_directory_tree()
 
-    collection_loc.import_rolls(ROLLS_IMPORT)
-    collection_ext.import_rolls(ROLLS_IMPORT)
+    collection_loc.import_rolls(rolls_to_import)
+    collection_ext.import_rolls(rolls_to_import)
 
-    print('\n'*3)
+    print('\n' * 5)
 
-    size_loc = 0
-    size_ext = 0
-    for roll in collection_loc.rolls:
-        for dirpath, dirnames, filenames in os.walk(roll.directory):
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                size_loc += safe_getsize(filepath)
-    for roll in collection_ext.rolls:
-        for dirpath, dirnames, filenames in os.walk(roll.directory):
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                size_ext += safe_getsize(filepath)
-    
+    size_loc = get_collection_size(collection_loc)
+    size_ext = get_collection_size(collection_ext)
+
     db.d('[A]', 'Total size summary', [
-    f'local total size:    {format_bytes(size_loc)}',
-    f'external total size: {format_bytes(size_ext)}',
+        f'local total size:    {format_bytes(size_loc)}',
+        f'external total size: {format_bytes(size_ext)}',
     ])
 
-
-    
     db.i('[A]', 'Collections imported', [
         f'local rolls:    {len(collection_loc.rolls)} :: {format_bytes(size_loc)}',
         f'external rolls: {len(collection_ext.rolls)} :: {format_bytes(size_ext)}',
@@ -111,42 +115,183 @@ def main():
             f'external: {len(collection_ext.rolls)}',
         ])
 
-    for i in range(len(collection_ext.rolls)):
-        roll_loc = collection_loc.rolls[i]
-        roll_ext = collection_ext.rolls[i]
+    roll_pairs = build_roll_pairs(collection_loc, collection_ext)
+    selected_pairs = select_roll_pairs(roll_pairs, roll_selector)
 
-        db.d('[A]', f'Processing roll {i + 1}/{len(collection_ext.rolls)}', [
+    if len(selected_pairs) == 0:
+        db.w('[A]', 'No rolls selected. Nothing to do.')
+        return
+
+    for i, (roll_loc, roll_ext) in enumerate(selected_pairs, start=1):
+        db.d('[A]', f'Processing selected roll {i}/{len(selected_pairs)}', [
             f'roll_loc.index: {roll_loc.index_str}',
             f'roll_ext.index: {roll_ext.index_str}',
             f'local dir:      {roll_loc.directory}',
             f'external dir:   {roll_ext.directory}',
         ])
 
-        # offload(roll_loc, roll_ext, 'all')
-        onload(roll_ext, 'all')
+        if action == 'offload':
+            offload(roll_loc, roll_ext, function)
+        elif action == 'onload':
+            onload(roll_ext, function)
+        else:
+            db.e('[A]', f'Unknown action: {action}')
+            return
 
-    size_loc_end = 0
-    size_ext_end = 0
-    for roll in collection_loc.rolls:
-        for dirpath, dirnames, filenames in os.walk(roll.directory):
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                size_loc_end += safe_getsize(filepath)
-    for roll in collection_ext.rolls:
-        for dirpath, dirnames, filenames in os.walk(roll.directory):
-            for filename in filenames:
-                filepath = os.path.join(dirpath, filename)
-                size_ext_end += safe_getsize(filepath)
+    size_loc_end = get_collection_size(collection_loc)
+    size_ext_end = get_collection_size(collection_ext)
 
     delta_loc = size_loc_end - size_loc
     delta_ext = size_ext_end - size_ext
 
-
     t2 = time()
-    db.s('[A]', f'Archiver finished in {t2-t1:.2f}s', [
+    db.s('[A]', f'Archiver finished in {t2 - t1:.2f}s', [
         f'loc: {format_bytes(size_loc)}\t--> {format_bytes(size_loc_end)}\tdelta= ({format_bytes(delta_loc)})',
         f'ext: {format_bytes(size_ext)}\t--> {format_bytes(size_ext_end)}\tdelta= ({format_bytes(delta_ext)})'
-        ])
+    ])
+
+
+def parse_cli_args(argv):
+    if len(argv) != 4:
+        print_usage_and_exit()
+
+    action = argv[1].strip().lower()
+    roll_selector = normalize_roll_selector(argv[2])
+    function = argv[3].strip().lower()
+
+    if action not in ['offload', 'onload']:
+        db.e('[A]', f'Invalid action: {action}')
+        print_usage_and_exit()
+
+    if function not in ['all', 'raw', 'jpg']:
+        db.e('[A]', f'Invalid function: {function}')
+        print_usage_and_exit()
+
+    validate_roll_selector(roll_selector)
+
+    return action, roll_selector, function
+
+
+def normalize_roll_selector(selector):
+    selector = selector.strip()
+    selector = selector.replace(' ', '')
+    return selector.lower()
+
+
+def validate_roll_selector(selector):
+    if selector == 'all':
+        return
+
+    chunks = selector.split(',')
+    if len(chunks) == 0:
+        db.e('[A]', f'Invalid roll selector: {selector}')
+        print_usage_and_exit()
+
+    for chunk in chunks:
+        if chunk == '':
+            db.e('[A]', f'Invalid roll selector chunk: {selector}')
+            print_usage_and_exit()
+
+        if '-' in chunk:
+            parts = chunk.split('-')
+            if len(parts) != 2 or (not parts[0].isdigit()) or (not parts[1].isdigit()):
+                db.e('[A]', f'Invalid roll range: {chunk}')
+                print_usage_and_exit()
+            if int(parts[0]) > int(parts[1]):
+                db.e('[A]', f'Invalid descending roll range: {chunk}')
+                print_usage_and_exit()
+        else:
+            if not chunk.isdigit():
+                db.e('[A]', f'Invalid roll index: {chunk}')
+                print_usage_and_exit()
+
+
+def print_usage_and_exit():
+    print('Usage:')
+    print('    archiver offload all <function>')
+    print('    archiver offload 72 <function>')
+    print('    archiver offload 72-80 <function>')
+    print('    archiver offload 72,76 <function>')
+    print('    archiver onload  all <function>')
+    print('')
+    print('<function> = all | raw | jpg')
+    sys.exit(1)
+
+
+def build_roll_pairs(collection_loc, collection_ext):
+    loc_map = {}
+    ext_map = {}
+
+    for roll in collection_loc.rolls:
+        loc_map[str(int(roll.index_str))] = roll
+
+    for roll in collection_ext.rolls:
+        ext_map[str(int(roll.index_str))] = roll
+
+    shared_indices = sorted(set(loc_map.keys()) & set(ext_map.keys()), key=lambda x: int(x))
+    missing_loc = sorted(set(ext_map.keys()) - set(loc_map.keys()), key=lambda x: int(x))
+    missing_ext = sorted(set(loc_map.keys()) - set(ext_map.keys()), key=lambda x: int(x))
+
+    if len(missing_loc) > 0:
+        db.w('[A]', 'Rolls present externally but missing locally', ', '.join(missing_loc))
+
+    if len(missing_ext) > 0:
+        db.w('[A]', 'Rolls present locally but missing externally', ', '.join(missing_ext))
+
+    roll_pairs = []
+    for idx in shared_indices:
+        roll_pairs.append((loc_map[idx], ext_map[idx]))
+
+    return roll_pairs
+
+
+def select_roll_pairs(roll_pairs, roll_selector):
+    if roll_selector == 'all':
+        return roll_pairs
+
+    wanted = expand_roll_selector(roll_selector)
+
+    selected = []
+    found = set()
+
+    for roll_loc, roll_ext in roll_pairs:
+        idx = str(int(roll_loc.index_str))
+        if idx in wanted:
+            selected.append((roll_loc, roll_ext))
+            found.add(idx)
+
+    missing = sorted(wanted - found, key=lambda x: int(x))
+    if len(missing) > 0:
+        db.w('[A]', 'Requested rolls were not found in both local and external collections', ', '.join(missing))
+
+    return selected
+
+
+def expand_roll_selector(selector):
+    wanted = set()
+    chunks = selector.split(',')
+
+    for chunk in chunks:
+        if '-' in chunk:
+            start_str, end_str = chunk.split('-')
+            start_idx = int(start_str)
+            end_idx = int(end_str)
+            for idx in range(start_idx, end_idx + 1):
+                wanted.add(str(idx))
+        else:
+            wanted.add(str(int(chunk)))
+
+    return wanted
+
+
+def get_collection_size(collection):
+    total_size = 0
+    for roll in collection.rolls:
+        for dirpath, dirnames, filenames in os.walk(roll.directory):
+            for filename in filenames:
+                filepath = os.path.join(dirpath, filename)
+                total_size += safe_getsize(filepath)
+    return total_size
 
 
 def offload(roll_loc, roll_ext, function=None):
@@ -215,8 +360,6 @@ def offload(roll_loc, roll_ext, function=None):
             copy_delete(pair[0], pair[1])
 
         processed += 1
-
-
 
     db.s('[A]', 'offload() complete', f'{roll_loc.index_str} :: {format_bytes(size)}')
     return
@@ -301,6 +444,7 @@ def onload(roll_ext, function=None):
     ])
     return
 
+
 # Build path list for source/destination based on mode
 def get_paths(roll_loc, roll_ext, function):
     srcs = []
@@ -371,7 +515,6 @@ def get_paths_onload(roll_ext, function):
         srcs.extend(jpgs)
         srcs.extend(raws)
         # srcs.extend(previews)
-
 
     elif function.lower() == 'jpg':
         jpgs = get_jpg_files(roll_ext)
