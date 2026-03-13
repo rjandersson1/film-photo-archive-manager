@@ -189,6 +189,84 @@ class exposureObj:
 
     # =========== Private methods ================== #
 
+
+    def _resolve_raw_file_path(self):
+        if not self.roll.rawDirs or not self.rawFileName:
+            return None
+
+        rawDir = self.roll.rawDirs[0]
+        rawName = os.path.basename(str(self.rawFileName)).strip()
+        rawStem = os.path.splitext(rawName)[0].strip()
+
+        if rawDir in (-1, None) or rawStem in (-1, None, ""):
+            return None
+
+        def get_core(name):
+            stem = os.path.splitext(os.path.basename(str(name)))[0].strip()
+            m = re.match(r"^([A-Za-z]*\d+)", stem)
+            if m:
+                return m.group(1)
+            return stem.split("-")[0].split("_")[0].split(" ")[0]
+
+        try:
+            files = []
+            for name in os.listdir(rawDir):
+                path = os.path.join(rawDir, name)
+                if not os.path.isfile(path):
+                    continue
+
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in (".arw", ".dng", ".tif", ".tiff"):
+                    continue
+
+                files.append((name, path))
+
+        except FileNotFoundError:
+            return None
+
+        # 1) prefer exact basename match
+        exact_matches = [path for name, path in files if name == rawName]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        if len(exact_matches) > 1:
+            db.e(
+                self.dbIdx,
+                "Error finding raw path! Duplicate exact raw filenames",
+                f"{self.name} :: {self.rawFileName}"
+            )
+            return None
+
+        # 2) fallback: exact stem match
+        exact_stem_matches = [
+            path for name, path in files
+            if os.path.splitext(name)[0].strip() == rawStem
+        ]
+        if len(exact_stem_matches) == 1:
+            return exact_stem_matches[0]
+        if len(exact_stem_matches) > 1:
+            db.e(
+                self.dbIdx,
+                "Error finding raw path! Duplicate exact raw stems",
+                f"{self.name} :: {self.rawFileName}"
+            )
+            return None
+
+        # 3) fallback: loose core match
+        core = get_core(rawName)
+        core_matches = [path for name, path in files if get_core(name) == core]
+
+        if len(core_matches) == 1:
+            return core_matches[0]
+
+        if len(core_matches) > 1:
+            db.e(
+                self.dbIdx,
+                "Error finding raw path! Duplicate DSC files",
+                f"{self.name} :: {self.rawFileName}"
+            )
+
+        return None
+
     # Updates image attributes from EXIF.
     def _update_from_exif(self):
         if not self.exif:
@@ -201,42 +279,7 @@ class exposureObj:
             self.rawFileName = self.rawFileName.split(".")[0]+".dng"
 
 
-        if self.roll.rawDirs and self.rawFileName:
-            rawDir = self.roll.rawDirs[0]
-            rawStem = os.path.splitext(str(self.rawFileName))[0]
-
-            if rawStem == -1 or rawDir == -1 or rawStem is None or rawDir is None:
-                self.rawFilePath = None
-            else:
-                # core match: take leading token like DSC01234, ignore suffixes (-HDR, -Pano, etc.)
-                m = re.match(r"^([A-Za-z]*\d+)", rawStem.strip())
-                core = m.group(1) if m else rawStem.strip().split("-")[0].split("_")[0].split(" ")[0]
-
-                matches = []
-                try:
-                    for name in os.listdir(rawDir):
-                        stem, ext = os.path.splitext(name)
-                        ext_l = ext.lower()
-                        if ext_l not in (".arw", ".dng"):
-                            continue
-
-                        m2 = re.match(r"^([A-Za-z]*\d+)", stem.strip())
-                        stem_core = m2.group(1) if m2 else stem.strip().split("-")[0].split("_")[0].split(" ")[0]
-
-                        if stem_core == core:
-                            path = os.path.join(rawDir, name)
-                            if os.path.isfile(path):
-                                matches.append(path)
-                except FileNotFoundError:
-                    matches = []
-
-                if len(matches) == 1:
-                    self.rawFilePath = matches[0]
-                elif len(matches) == 0:
-                    self.rawFilePath = None
-                else:
-                    self.rawFilePath = None
-                    db.e(self.dbIdx, "Error finding raw path! Duplicate DSC files")
+        self.rawFilePath = self._resolve_raw_file_path()
                 
         
         if self.rawFileName == None:
