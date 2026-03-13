@@ -1086,6 +1086,66 @@ class rollObj:
                                     copy.rawFilePath = candidate
                                     break
 
+        
+        for img in self.images:
+            imgRawName = img.rawFileName.split('.')[0]
+            if imgRawName in unmatched_raws:
+                unmatched_raws.discard(imgRawName)
+            else:
+                db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', imgRawName)
+
+            for copy in img.copies:
+                copy_rawName = copy.rawFileName
+                if copy_rawName in unmatched_raws:
+                    unmatched_raws.discard(copy_rawName)
+                else:
+                    if copy.isPano and copy.isStitched:
+
+                        # find corresponding pano raw file: eg match DSC01694.ARW <--> DSC01694-pano.dng
+                        base_name = os.path.splitext(copy_rawName)[0]+'-Pano'
+                        pano_raw_candidates = [f for f in raw_filenames if f.startswith(base_name) and '-Pano' in os.path.splitext(f)[0]]
+                        new_raw_name = 'N/A'
+                        if pano_raw_candidates:
+                            new_raw_name = pano_raw_candidates[0]
+                            copy.rawFileName = new_raw_name
+                            if copy.rawFilePath:
+                                copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
+                            unmatched_raws.discard(new_raw_name)
+                            db.d(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
+                        else:
+                            db.e(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName} ({copy.original.mpx:.0f},{copy.mpx:.0f})MP at ({copy.original.aspectRatio:.2f},{copy.aspectRatio:.2f}):1 --> copy.isStitched={copy.isStitched}')
+
+                    
+
+
+        if len(unmatched_raws) > 0:
+            unmatched_files = list(unmatched_raws)
+            # build paths to unmatched raws
+            self.unmatched_raws = []
+            for rawDir in self.rawDirs:
+                for rawFile in unmatched_files:
+                    rawPath = os.path.join(rawDir, rawFile)
+                    if rawFile.startswith('._'):
+                        continue
+                    if os.path.exists(rawPath):
+                        self.unmatched_raws.append(rawPath)
+            if len(self.unmatched_raws) > 0:
+                db.w(f'[{self.index_str}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
+        
+        for img in self.images_all:
+            rawFileName_ending = img.rawFileName.split('.')[-1]
+            rawFilePath_ending = os.path.basename(img.rawFilePath).split('.')[-1] if img.rawFilePath else None
+            if rawFileName_ending != rawFilePath_ending:
+                if rawFilePath_ending:
+                    db.d(img.dbIdx, 'Updating raw file name to actual path', f'{img.rawFileName} -> {os.path.basename(img.rawFilePath)}')
+                    img.rawFileName = os.path.basename(img.rawFilePath)
+                elif rawFilePath_ending != None:
+                    db.e(img.dbIdx, 'RAW file extension mismatch between image rawFileName and rawFilePath!', f'{rawFileName_ending} vs {rawFilePath_ending}')
+            
+            if img.rawFileName.startswith('._'):
+                db.e(img.dbIdx, 'MacOS [._] in rawFileName')
+            if os.path.basename(img.rawFilePath).startswith('._') if img.rawFilePath else None:
+                db.e(img.dbIdx, 'MacOS [._] in rawFilePath')
 
 
         # hardcode fix for roll 9 pano copy: reattach exposure 10 to exposure 8
@@ -1142,70 +1202,13 @@ class rollObj:
 
 
 
+
             # enforce invariant: if rawFilePath exists, rawFileName == basename(rawFilePath)
             for img in self.images_all:
                 if img.rawFilePath:
                     img.rawFileName = os.path.basename(img.rawFilePath)
             unmatched_raws = set(raw_filenames)
-        
-        for img in self.images:
-            imgRawName = img.rawFileName.split('.')[0]
-            if imgRawName in unmatched_raws:
-                unmatched_raws.discard(imgRawName)
-            else:
-                db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', imgRawName)
 
-            for copy in img.copies:
-                copy_rawName = copy.rawFileName
-                if copy_rawName in unmatched_raws:
-                    unmatched_raws.discard(copy_rawName)
-                else:
-                    if copy.isPano and copy.isStitched:
-
-                        # find corresponding pano raw file: eg match DSC01694.ARW <--> DSC01694-pano.dng
-                        base_name = os.path.splitext(copy_rawName)[0]+'-Pano'
-                        pano_raw_candidates = [f for f in raw_filenames if f.startswith(base_name) and '-Pano' in os.path.splitext(f)[0]]
-                        new_raw_name = 'N/A'
-                        if pano_raw_candidates:
-                            new_raw_name = pano_raw_candidates[0]
-                            copy.rawFileName = new_raw_name
-                            if copy.rawFilePath:
-                                copy.rawFilePath = copy.rawFilePath.replace(copy_rawName, new_raw_name)
-                            unmatched_raws.discard(new_raw_name)
-                            db.d(f'[{self.index_str}][{img.index_str}]', f'Adjusted panorama RAW filename:', [f'{copy.name} --> {copy_rawName} --> {new_raw_name}', copy.rawFilePath])
-                        else:
-                            db.e(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for panorama:', f'{copy.name} --> {copy_rawName} ({copy.original.mpx:.0f},{copy.mpx:.0f})MP at ({copy.original.aspectRatio:.2f},{copy.aspectRatio:.2f}):1 --> copy.isStitched={copy.isStitched}')
-
-                    
-
-        if len(unmatched_raws) > 0:
-            unmatched_files = list(unmatched_raws)
-            # build paths to unmatched raws
-            self.unmatched_raws = []
-            for rawDir in self.rawDirs:
-                for rawFile in unmatched_files:
-                    rawPath = os.path.join(rawDir, rawFile)
-                    if rawFile.startswith('._'):
-                        continue
-                    if os.path.exists(rawPath):
-                        self.unmatched_raws.append(rawPath)
-            if len(self.unmatched_raws) > 0:
-                db.w(f'[{self.index_str}]', f'Unmatched RAW files remaining:', self.unmatched_raws)
-        
-        for img in self.images_all:
-            rawFileName_ending = img.rawFileName.split('.')[-1]
-            rawFilePath_ending = os.path.basename(img.rawFilePath).split('.')[-1] if img.rawFilePath else None
-            if rawFileName_ending != rawFilePath_ending:
-                if rawFilePath_ending:
-                    db.d(img.dbIdx, 'Updating raw file name to actual path', f'{img.rawFileName} -> {os.path.basename(img.rawFilePath)}')
-                    img.rawFileName = os.path.basename(img.rawFilePath)
-                elif rawFilePath_ending != None:
-                    db.e(img.dbIdx, 'RAW file extension mismatch between image rawFileName and rawFilePath!', f'{rawFileName_ending} vs {rawFilePath_ending}')
-            
-            if img.rawFileName.startswith('._'):
-                db.e(img.dbIdx, 'MacOS [._] in rawFileName')
-            if os.path.basename(img.rawFilePath).startswith('._') if img.rawFilePath else None:
-                db.e(img.dbIdx, 'MacOS [._] in rawFilePath')
 
     # Verify attributes on roll and print a summary
     def verify_roll(self):
