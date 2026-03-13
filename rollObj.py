@@ -1086,6 +1086,62 @@ class rollObj:
                                     copy.rawFilePath = candidate
                                     break
 
+
+
+        # hardcode fix for roll 9 pano copy: reattach exposure 10 to exposure 8
+        if self.index == 72:
+            target_master = None
+            wrong_master = None
+            pano_copy = None
+
+            # find exposure 8 master, exposure 11 wrong master, and exposure 10 pano copy
+            for img in self.images:
+                if img.index_original == 8:
+                    target_master = img
+                if img.index_original == 11:
+                    wrong_master = img
+
+                for copy in img.copies:
+                    if copy.index_original == 10:
+                        pano_copy = copy
+
+            if target_master and wrong_master and pano_copy:
+                # remove from wrong master
+                if pano_copy in wrong_master.copies:
+                    wrong_master.copies.remove(pano_copy)
+                    wrong_master.copyCount = len(wrong_master.copies)
+                    wrong_master.containsCopies = len(wrong_master.copies) > 0
+
+                # attach to correct master
+                if pano_copy not in target_master.copies:
+                    target_master.copies.append(pano_copy)
+
+                target_master.copyCount = len(target_master.copies)
+                target_master.containsCopies = True
+
+                # update pano copy attrs
+                pano_copy.original = target_master
+                pano_copy.isCopy = True
+                pano_copy.isOriginal = False
+                pano_copy.containsCopies = False
+                pano_copy.copyCount = 0
+                pano_copy.index = target_master.index
+                pano_copy.index_str = target_master.index_str
+
+                db.w(
+                    f'[{self.index_str}]',
+                    'Hardcode pano rematch in verify_raw_files',
+                    f'idx_original 10 moved from 11 -> 8'
+                )
+            else:
+                db.e(
+                    f'[{self.index_str}]',
+                    'Hardcode pano rematch failed',
+                    f'target_master={target_master is not None}, wrong_master={wrong_master is not None}, pano_copy={pano_copy is not None}'
+                )
+
+
+
             # enforce invariant: if rawFilePath exists, rawFileName == basename(rawFilePath)
             for img in self.images_all:
                 if img.rawFilePath:
