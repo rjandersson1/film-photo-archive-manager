@@ -494,7 +494,8 @@ class collectionObj:
             plt.show()
 
     def build_stocklist(self):
-        xlsx_path = os.path.join(os.getcwd(), "data", "stocklist.xlsx")
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        xlsx_path = os.path.join(project_dir, 'data', 'stocklist.xlsx')
         df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl").fillna("")
 
         stocklist = {}
@@ -525,7 +526,8 @@ class collectionObj:
         self.stocklist = stocklist
 
     def build_cameralist(self):
-        xlsx_path = os.path.join(os.getcwd(), "data", "cameralist.xlsx")
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        xlsx_path = os.path.join(project_dir, 'data', 'cameralist.xlsx')
         df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl").fillna("")
 
         cameralist = {}
