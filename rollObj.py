@@ -1040,6 +1040,8 @@ class rollObj:
                 stem = stem[:-5]
             elif stem.endswith('-HDR'):
                 stem = stem[:-4]
+            elif stem.endswith('-positive'):
+                stem = stem.split('-')[0]
 
             return stem
 
