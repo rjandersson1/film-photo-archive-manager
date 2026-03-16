@@ -274,10 +274,11 @@ class exposureObj:
 
         fl = self.focalLength
 
-        if 'mm' in model and fl == None:
-            fl = int(model.split('mm')[0])
-            self.focalLength = fl
-            db.w(self.dbIdx,'Lens set, but focal length not! Grabbing FL from model: ', f'{model} --> {fl}')
+        if model:
+            if 'mm' in model and fl == None:
+                fl = int(model.split('mm')[0])
+                self.focalLength = fl
+                db.w(self.dbIdx,'Lens set, but focal length not! Grabbing FL from model: ', f'{model} --> {fl}')
 
         maxA = self.maxAperture
         if maxA:
