@@ -542,7 +542,7 @@ class Renderer:
         # build camlens and handle cases where lens is missing
             cam = img.cam
             if not img.lns and img.lensModel:
-                db.w(img.dbIdx, 'Lns cast faliure!')
+                db.w(img.dbIdx, 'Lns cast failure!', f'img.lns: {img.lns} | img.lensModel: {img.lensModel}')
             lns = ("/"+img.lns) if img.lns else ""
             camlns = cam + lns if (cam and lns) else cam
             md = {
