@@ -243,6 +243,7 @@ class Renderer:
         
         
         # Derived attributes
+
         self.rebate_size, self.film_size = self.get_format(self.roll.filmformat)
         return
 
@@ -936,7 +937,7 @@ class Renderer:
         img = Image.open(path).convert("RGBA")
 
         # rotate
-        if image.isVertical:
+        if image.isVertical and not image.roll.filmformat == '6x6':
             img = img.rotate(90, expand=True)
     
         # resize
