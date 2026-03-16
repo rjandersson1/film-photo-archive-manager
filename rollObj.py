@@ -883,11 +883,12 @@ class rollObj:
                 seen.add(key)
                 camera_pairs.append(key)
 
-        # print([b for b, _ in camera_pairs], [m for _, m in camera_pairs])
 
+        # Reset roll-level camera metadata
         self.filmtype = None
         self.filmformat = None
         self.cam = None
+        self.cameras = [f"{brand} {model}" for brand, model in camera_pairs]
 
         for brand_raw, model_raw in camera_pairs:
             brand = brand_raw.strip().lower()
@@ -910,7 +911,6 @@ class rollObj:
 
                     # Apply only to matching images
                     camera_key = str(f'{brand_raw} {model_raw}')
-                    self.cameras.append(camera_key)
                     for img in self.images_all:
                         if (img.cameraBrand is not None and img.cameraModel is not None) and (img.camera == camera_key):
                             img.filmtype = filmtype
@@ -926,7 +926,7 @@ class rollObj:
                     break  # stop searching cameralist for this pair
 
             if not camfound:
-                db.e(self.dbIdx, "Cam not in cameralist:", f"({brand_raw},{model_raw})")
+                db.e(self.dbIdx, "Cam not in cameralist:", f"({brand_raw}, {model_raw})")
 
     # filter images by rating
     def filter_by_rating(self, stars, logic, include_copies=False):
@@ -1086,7 +1086,7 @@ class rollObj:
                                     copy.rawFilePath = candidate
                                     break
 
-        
+
         for img in self.images:
             imgRawName = img.rawFileName.split('.')[0]
             if imgRawName in unmatched_raws:
