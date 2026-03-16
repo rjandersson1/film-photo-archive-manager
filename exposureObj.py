@@ -267,6 +267,35 @@ class exposureObj:
 
         return None
 
+    def cast_lns(self):
+        lns = None
+        model = self.lensModel
+        
+
+        fl = self.focalLength
+
+        if 'mm' in model and fl == None:
+            fl = int(model.split('mm')[0])
+            self.focalLength = fl
+            db.w(self.dbIdx,'Lens set, but focal length not! Grabbing FL from model: ', f'{model} --> {fl}')
+
+        maxA = self.maxAperture
+        if maxA:
+            maxA = float(maxA)
+            if maxA > 10:
+                maxA = f'{maxA:.0f}'
+            else:
+                maxA = f'{maxA:.1f}'
+        if fl and maxA:
+            lns = f'{fl:.0f}f{maxA}'
+        elif fl and not maxA:
+            lns = f'{fl:.0f}mm'
+        else:
+            lns = ''
+
+        return lns
+
+
     # Updates image attributes from EXIF.
     def _update_from_exif(self):
         if not self.exif:
@@ -336,7 +365,9 @@ class exposureObj:
         # TODO: improve lens ID casting to handle zoom (35-105) etc. --> grab from lensModel.
         self.focalLength = self.get_exif(("ExifIFD", "FocalLength"),
                                         conv=lambda v: float(v.split(" ")[0]) if v else None)
-        self.lns         = str(int(self.focalLength)) + 'f' + self.maxAperture if (self.focalLength and self.maxAperture) else ''
+        self.lns         = self.cast_lns()
+
+
 
         # Image data
         self.width  = self.get_exif(("File", "ImageWidth"), conv=int)
