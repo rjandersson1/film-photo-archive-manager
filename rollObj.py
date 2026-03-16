@@ -1028,8 +1028,21 @@ class rollObj:
                 if count > 1:
                     db.e(f'[{self.index_str}]', f'Multiple RAW files under {name}')
 
+
+
+
     # check all img and copies match to a raw file, flag any that are duplicates or missing
     def verify_raw_files(self):
+        def normalize_raw_key(filename):
+            stem = os.path.splitext(os.path.basename(filename))[0]
+
+            if stem.endswith('-Pano'):
+                stem = stem[:-5]
+            elif stem.endswith('-HDR'):
+                stem = stem[:-4]
+
+            return stem
+
         if self.rawMissing:
             return
         # Build set of raw filenames (without extensions)
@@ -1043,13 +1056,7 @@ class rollObj:
         # Walk through all images and copies and ensure raw file exists. If exists, remove from set. Print remaining unmatched raws at end.
         unmatched_raws = set()
         for filename in raw_filenames:
-            if '-Pano' in filename:
-                out = filename.split('-Pano')[0]
-            if '-HDR' in filename:
-                out = filename.split('-HDR')[0]
-            else:
-                out = filename.split('.')[0]
-            unmatched_raws.add(out)
+            unmatched_raws.add(normalize_raw_key(filename))
 
 
         # Hardcode fix for raw file matching roll 9 (pano naming + path casting)
@@ -1092,7 +1099,7 @@ class rollObj:
             if imgRawName in unmatched_raws:
                 unmatched_raws.discard(imgRawName)
             else:
-                db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', imgRawName)
+                db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'imgRawName: {imgRawName} != rawFilePath name: {os.path.basename(img.rawFilePath).split('.')[0]}')
 
             for copy in img.copies:
                 copy_rawName = copy.rawFileName
