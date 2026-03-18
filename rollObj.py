@@ -1101,7 +1101,10 @@ class rollObj:
             if imgRawName in unmatched_raws:
                 unmatched_raws.discard(imgRawName)
             else:
-                db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'imgRawName: {imgRawName} != rawFilePath name: {os.path.basename(img.rawFilePath).split('.')[0]}')
+                if img.rawFilePath is not None:
+                    db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'imgRawName: {imgRawName} != rawFilePath name: {os.path.basename(img.rawFilePath).split('.')[0]}')
+                else:
+                    db.w(f'[{self.index_str}][{img.index_str}]', f'No matching RAW file for image:', f'[{img.index_original}] imgRawName: {imgRawName} != rawFilePath name: None')
 
             for copy in img.copies:
                 copy_rawName = copy.rawFileName
