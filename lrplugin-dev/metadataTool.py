@@ -30,6 +30,16 @@ SCAN_METHOD_POS = (2410, 835)
 PUSH_PULL_POS = (2402, 979)
 DEVELOPED_AT_POS = (2401, 992)
 
+# Dropdown fields open with whatever value they currently hold highlighted, not
+# always the first entry -- and that value can be blank/empty, which previously
+# broke selection outright (a down-count computed for "starts at entry 1" lands
+# on the wrong entry, or nowhere, if the field actually starts empty). This is a
+# generous upper bound on any of these controlled-vocabulary dropdowns' entry
+# counts, pressed as "up" before every dropdown selection to reliably clamp to
+# the first entry regardless of starting value. Edit here if a future dropdown
+# ever has more entries than this.
+DROPDOWN_RESET_PRESSES = 6
+
 
 class metadataTool:
 
@@ -599,17 +609,21 @@ class metadataTool:
 
 
 
-    def select_dropdown(self, pos, up=0, down=0):
+    def select_dropdown(self, pos, down=0):
         """Selects an option in a Lightroom dropdown/combo-box field that can't be
         reached by tabbing and can't be filled via paste_text() (eg. Film Format,
         Scan Method, Push-Pull, Developed At). Clicks the calibrated position to
-        open the dropdown, presses up/down the given number of times, then
-        confirms with enter. Dropdowns open with whatever value the field
-        currently holds highlighted -- not always the first item -- so 'up' is
-        used first for fields that may already hold a prior value, spinning to a
-        known boundary before moving a fixed relative offset (eg. Developed At:
-        4x up reaches the top of a short list regardless of starting position,
-        then 1x down lands on the intended entry)."""
+        open the dropdown, then ALWAYS presses up DROPDOWN_RESET_PRESSES times
+        first, before moving `down` presses to the intended entry, then
+        confirming with enter.
+
+        The reset-to-top step matters because a dropdown opens with whatever
+        value it currently holds highlighted, not always the first entry -- and
+        that value can be blank/empty. A down-count computed assuming "starts at
+        entry 1" silently lands on the wrong entry (or nowhere) if the field
+        actually started somewhere else. Always resetting first removes that
+        assumption entirely, at the cost of a fixed handful of extra keystrokes
+        per dropdown -- cheap, since these run once per roll, not per image."""
 
         pyautogui.moveTo(pos)
         time.sleep(0.2)
@@ -619,18 +633,19 @@ class metadataTool:
         # Dropdown/combo-box fields need visibly more time than a text field to
         # register and redraw each arrow-key move -- press()'s normal ~0.004s
         # gap (used everywhere else, eg. tab-through paste fields) is too fast
-        # here and keystrokes get dropped/miscounted. 0.2s is dropdown-only;
+        # here and keystrokes get dropped/miscounted. self.delay_keypresss is dropdown-only;
         # press() itself is unchanged for every other caller.
-        for _ in range(up):
+        for _ in range(DROPDOWN_RESET_PRESSES):
             self.press("up")
-            time.sleep(0.2)
+            time.sleep(self.delay_keypress)
 
         for _ in range(down):
             self.press("down")
-            time.sleep(0.2)
+            time.sleep(self.delay_keypress)
 
+        time.sleep(0.1)
         self.press("enter")
-        time.sleep(0.2)
+        time.sleep(0.1)
 
 
     def apply_lrplugin(self):
@@ -1158,10 +1173,9 @@ class metadataTool:
         if self.pushPull_pos is not None:
             self.select_dropdown(self.pushPull_pos, down=3)
 
-        # Developed At -- hardcoded; 4x up first to reach the top of the list
-        # regardless of whatever value the field currently holds, then 1x down.
+        # Developed At -- hardcoded, always the 2nd entry.
         if self.developedAt_pos is not None:
-            self.select_dropdown(self.developedAt_pos, up=4, down=1)
+            self.select_dropdown(self.developedAt_pos, down=1)
 
         # close metadata editing and return to single-image workflow
         self.press("esc")
