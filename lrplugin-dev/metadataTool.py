@@ -39,6 +39,15 @@ class metadataTool:
 
         self.cameraMake_pos = None
 
+        # Lightroom combo-box/dropdown fields -- unlike the free-text fields in
+        # self.fields, these can't be reached by tabbing and can't be filled via
+        # paste_text(); they're selected via calibrated click + up/down-arrow +
+        # enter (see calibrate() / select_dropdown() / apply_dropdown_fields()).
+        self.filmFormat_pos = None
+        self.scanMethod_pos = None
+        self.pushPull_pos = None
+        self.developedAt_pos = None
+
         self.kb = Controller()
 
         pyautogui.FAILSAFE = True
@@ -207,6 +216,48 @@ class metadataTool:
 
 
 
+    @staticmethod
+    def _parse_lens_info(lens_model):
+        """Parses '{focal}/{maxAperture}' (eg. '28/2.8') out of a free-text Lens
+        Model string (eg. '28mm f/2.8'), for appending onto Scene. Mirrors
+        exposureObj.py's LensModel-derived maxAperture rules exactly (see
+        _update_from_exif() ~lines 355-364) and its cast_lns() 'mm' focal-length
+        fallback (~lines 277-281), since that parsing has already been validated
+        against real EXIF LensModel strings across the whole archive -- this is
+        intentionally not a new/different parser. Returns None if a focal length
+        and max aperture can't both be extracted (eg. blank or unexpected text)."""
+
+        if not lens_model:
+            return None
+
+        model = str(lens_model).strip()
+
+        focal = None
+        if 'mm' in model:
+            try:
+                focal = int(model.split('mm')[0].strip())
+            except ValueError:
+                focal = None
+
+        max_aperture = None
+        if '/' in model:
+            try:
+                max_aperture = float(model.split('/')[-1].split(' ')[0])
+            except ValueError:
+                max_aperture = None
+        elif 'mm' in model and 'f' in model:
+            try:
+                max_aperture = float(model.split('f')[-1].strip())
+            except ValueError:
+                max_aperture = None
+
+        if focal is None or max_aperture is None:
+            return None
+
+        aperture_str = f'{max_aperture:.0f}' if max_aperture > 10 else f'{max_aperture:.1f}'
+
+        return f'{focal}/{aperture_str}'
+
     def process_excel(self):
 
         wb = load_workbook(self.xlsx_path)
@@ -214,8 +265,9 @@ class metadataTool:
 
         data = []
         date_counter = {}
+        xlsx_scene_updated = False
 
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
 
             (
                 # File info
@@ -273,6 +325,22 @@ class metadataTool:
 
             if raw is None:
                 continue
+
+            # Append the lens's focal length + max aperture to Scene, eg.
+            # (Scene="F3", Lens Model="28mm f/2.8") --> Scene="F3 + 28/2.8".
+            # Reuses exposureObj.py's exact LensModel-parsing rules (see
+            # exposureObj.py _update_from_exif(), ~lines 355-364, and cast_lns())
+            # rather than a new parser, since that logic is already validated
+            # against real EXIF LensModel strings across the whole archive.
+            lens_info = self._parse_lens_info(lens_model)
+            if lens_info:
+                scene = f"{scene} + {lens_info}" if scene else lens_info
+                # Persist into the actual xlsx cell, not just this in-memory
+                # record -- the original ask was for the source file itself to
+                # show "F3 + 28/2.8", not only whatever gets handed to Lightroom.
+                # Scene is column 12 (L) -- see METADATA_COLUMNS / generate_template().
+                ws.cell(row=row_num, column=12, value=scene)
+                xlsx_scene_updated = True
 
             date_created = None
             exif_datetime_original = None
@@ -345,6 +413,10 @@ class metadataTool:
 
             data.append(record)
 
+        if xlsx_scene_updated:
+            wb.save(self.xlsx_path)
+            db.d(f"Scene updated with lens info and saved back to {self.xlsx_path}")
+
         return data
 
 
@@ -372,6 +444,8 @@ class metadataTool:
 
         key_map = {
             "left": Key.left,
+            "up": Key.up,
+            "down": Key.down,
             "tab": Key.tab,
             "esc": Key.esc,
             "enter": Key.enter,
@@ -450,22 +524,36 @@ class metadataTool:
 
     def calibrate(self):
 
-        print("\nCALIBRATION")
-        print("Move mouse to 'Camera Make' field")
-        print(f"Press <{self.acceptButton}> to capture\n")
+        # (attribute to set, on-screen prompt). cameraMake_pos anchors the
+        # tab-through paste fields (self.fields); the four dropdown fields cannot
+        # be reached by tabbing and are selected separately via select_dropdown().
+        targets = [
+            ("cameraMake_pos", "Camera Make"),
+            ("filmFormat_pos", "Film Format"),
+            ("scanMethod_pos", "Scan Method"),
+            ("pushPull_pos", "Push-Pull"),
+            ("developedAt_pos", "Developed At"),
+        ]
 
-        self.accept_event.clear()
+        for attr, label in targets:
 
-        while not self.accept_event.is_set():
+            print("\nCALIBRATION")
+            print(f"Move mouse to '{label}' field")
+            print(f"Press <{self.acceptButton}> to capture\n")
 
-            if self.stop_flag:
-                return
+            self.accept_event.clear()
 
-            time.sleep(0.01)
+            while not self.accept_event.is_set():
 
-        self.cameraMake_pos = pyautogui.position()
+                if self.stop_flag:
+                    return
 
-        print("Captured:", self.cameraMake_pos)
+                time.sleep(0.01)
+
+            pos = pyautogui.position()
+            setattr(self, attr, pos)
+
+            print("Captured:", pos)
 
     def run_metadata(self, record):
 
@@ -489,6 +577,40 @@ class metadataTool:
 
             self.press("tab")
 
+
+
+    def select_dropdown(self, pos, up=0, down=0):
+        """Selects an option in a Lightroom dropdown/combo-box field that can't be
+        reached by tabbing and can't be filled via paste_text() (eg. Film Format,
+        Scan Method, Push-Pull, Developed At). Clicks the calibrated position to
+        open the dropdown, presses up/down the given number of times, then
+        confirms with enter. Dropdowns open with whatever value the field
+        currently holds highlighted -- not always the first item -- so 'up' is
+        used first for fields that may already hold a prior value, spinning to a
+        known boundary before moving a fixed relative offset (eg. Developed At:
+        4x up reaches the top of a short list regardless of starting position,
+        then 1x down lands on the intended entry)."""
+
+        pyautogui.moveTo(pos)
+        time.sleep(0.2)
+        pyautogui.click()
+        time.sleep(0.2)
+
+        # Dropdown/combo-box fields need visibly more time than a text field to
+        # register and redraw each arrow-key move -- press()'s normal ~0.004s
+        # gap (used everywhere else, eg. tab-through paste fields) is too fast
+        # here and keystrokes get dropped/miscounted. 0.2s is dropdown-only;
+        # press() itself is unchanged for every other caller.
+        for _ in range(up):
+            self.press("up")
+            time.sleep(0.2)
+
+        for _ in range(down):
+            self.press("down")
+            time.sleep(0.2)
+
+        self.press("enter")
+        time.sleep(0.2)
 
 
     def apply_lrplugin(self):
@@ -662,6 +784,11 @@ class metadataTool:
             return
 
         self.apply_shared_nlp_metadata()
+
+        if self.stop_flag:
+            return
+
+        self.apply_dropdown_fields()
 
         if self.stop_flag:
             return
@@ -872,6 +999,153 @@ class metadataTool:
                 self.paste_text(value)
 
             self.press("tab")
+
+        # close metadata editing and return to single-image workflow
+        self.press("esc")
+        time.sleep(self.delay_finish_image)
+        self.hotkey("cmd", "d")
+        time.sleep(self.delay_finish_image)
+        self.press("left")
+        time.sleep(self.delay_finish_image)
+
+
+    # Dropdown entries in on-screen order, index 0 = first item (the item a
+    # freshly-opened dropdown highlights by default). select_dropdown()'s "down"
+    # count for a target entry is its index here.
+    FILM_FORMAT_ORDER = ["half-frame", "35mm", "645", "6x6", "6x7", "6x8", "6x9"]
+
+    # cameralist.xlsx's filmformat column doesn't use the dropdown's own labels for
+    # every value -- 135-format cameras are stored as the (int or str) spool format
+    # "135" rather than "35mm", and the sheet has no way to flag half-frame vs.
+    # full-frame within that "135" value (no half-frame camera exists in the sheet
+    # today). Confirmed against the actual data: every 135-camera row's filmformat
+    # is literally 135; 120-camera rows already use the frame-geometry strings
+    # (6x6/6x7) that match the dropdown directly, so only "135" needs aliasing.
+    FILM_FORMAT_ALIASES = {"135": "35mm"}
+
+    @staticmethod
+    def _normalize_format(s):
+        # Tolerant match against cameralist.xlsx's filmformat column -- eg. "half
+        # frame" vs "half-frame" -- so the sheet's text doesn't need to be
+        # byte-for-byte identical to the Lightroom dropdown's labels.
+        return "".join(str(s).lower().split()).replace("-", "")
+
+    def _load_cameralist(self):
+        # data/ is gitignored and lives at the repo root, one level above
+        # lrplugin-dev/ (where this file lives).
+        cameralist_path = self.script_dir.parent / "data" / "cameralist.xlsx"
+
+        if not cameralist_path.exists():
+            print(f"WARNING: cameralist.xlsx not found at {cameralist_path} -- Film Format cannot be auto-selected.")
+            return {}
+
+        wb = load_workbook(cameralist_path)
+        ws = wb.active
+
+        header = [c.value for c in ws[1]]
+        col = {name: i for i, name in enumerate(header) if name is not None}
+
+        required = ("brand", "model", "filmformat")
+        missing = [c for c in required if c not in col]
+        if missing:
+            print(f"WARNING: cameralist.xlsx missing column(s) {missing} -- Film Format cannot be auto-selected.")
+            return {}
+
+        lookup = {}
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            brand = row[col["brand"]]
+            model = row[col["model"]]
+            filmformat = row[col["filmformat"]]
+            if not brand or not model or not filmformat:
+                continue
+            key = (self._normalize_format(brand), self._normalize_format(model))
+            lookup[key] = filmformat
+
+        return lookup
+
+    def _resolve_filmformat_down_count(self):
+        """Looks up the roll's camera in cameralist.xlsx and returns the down-arrow
+        count for select_dropdown() to land on the matching Film Format entry
+        (dropdown highlights the first item by default, so count == list index).
+        Returns None -- callers must then skip the Film Format step -- if the
+        camera or its filmformat can't be resolved; guessing here means silently
+        writing the wrong format into Lightroom with no undo."""
+
+        cam_make = self.shared_nlp.get("nlpOriginalCameraMake")
+        cam_model = self.shared_nlp.get("nlpOriginalCameraModel")
+
+        if not cam_make or not cam_model:
+            # Camera wasn't flagged as constant across the whole roll (or is
+            # blank in the first row) -- fall back to the first record's value.
+            first_nlp = self.data[0].get("nlp", {}) if self.data else {}
+            cam_make = cam_make or first_nlp.get("nlpOriginalCameraMake")
+            cam_model = cam_model or first_nlp.get("nlpOriginalCameraModel")
+
+        if not cam_make or not cam_model:
+            print("WARNING: no Camera Make/Model available -- skipping Film Format selection.")
+            return None
+
+        cameralist = self._load_cameralist()
+        key = (self._normalize_format(cam_make), self._normalize_format(cam_model))
+        filmformat = cameralist.get(key)
+
+        if not filmformat:
+            print(f"WARNING: '{cam_make} {cam_model}' not found in cameralist.xlsx -- skipping Film Format selection.")
+            return None
+
+        norm_order = [self._normalize_format(f) for f in self.FILM_FORMAT_ORDER]
+
+        raw_key = str(filmformat).strip()
+        aliased = self.FILM_FORMAT_ALIASES.get(raw_key, filmformat)
+        norm_format = self._normalize_format(aliased)
+
+        if norm_format not in norm_order:
+            print(f"WARNING: cameralist.xlsx filmformat '{filmformat}' not in known list {self.FILM_FORMAT_ORDER} -- skipping Film Format selection.")
+            return None
+
+        return norm_order.index(norm_format)
+
+
+    def apply_dropdown_fields(self):
+        """Selects Film Format / Scan Method / Push-Pull / Developed At once for
+        the whole roll. These are Lightroom combo-box fields, not free text, so
+        they can't go through paste_text()/tab like self.fields -- and in
+        practice they're constant for an entire roll (same camera, same scan
+        session, same lab), so -- like apply_shared_nlp_metadata() -- this runs
+        once with every photo selected rather than once per frame."""
+
+        if not any([self.filmFormat_pos, self.scanMethod_pos, self.pushPull_pos, self.developedAt_pos]):
+            db.d("Stage: apply dropdown fields skipped (not calibrated)")
+            return
+
+        db.d("Stage: apply dropdown fields (Film Format / Scan Method / Push-Pull / Developed At)")
+
+        # deselect all
+        self.hotkey("cmd", "d")
+        time.sleep(0.2)
+
+        # select all
+        self.hotkey("cmd", "a")
+        time.sleep(0.4)
+
+        # Film Format -- data-driven from cameralist.xlsx, skipped if unresolvable.
+        if self.filmFormat_pos is not None:
+            down_count = self._resolve_filmformat_down_count()
+            if down_count is not None:
+                self.select_dropdown(self.filmFormat_pos, down=down_count)
+
+        # Scan Method -- hardcoded, always the default/current (first) entry.
+        if self.scanMethod_pos is not None:
+            self.select_dropdown(self.scanMethod_pos)
+
+        # Push-Pull -- hardcoded, always the 4th entry.
+        if self.pushPull_pos is not None:
+            self.select_dropdown(self.pushPull_pos, down=3)
+
+        # Developed At -- hardcoded; 4x up first to reach the top of the list
+        # regardless of whatever value the field currently holds, then 1x down.
+        if self.developedAt_pos is not None:
+            self.select_dropdown(self.developedAt_pos, up=4, down=1)
 
         # close metadata editing and return to single-image workflow
         self.press("esc")
