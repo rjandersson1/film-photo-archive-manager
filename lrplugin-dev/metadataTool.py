@@ -24,11 +24,11 @@ class metadataTool:
 
         self.ignore_esc = False
 
-        self.delay_default = 0.001
-        self.delay_keypress = 0.001
-        self.delay_paste = 0.05 # stability issues for < ~0.05
-        self.delay_finish_image = 0.3 # stability issues for < ~0.3
-        self.delay_start = 0.1
+        self.delay_default = 0.002
+        self.delay_keypress = 0.002
+        self.delay_paste = 0.1 # stability issues for < ~0.05
+        self.delay_finish_image = 0.4 # stability issues for < ~0.3
+        self.delay_start = 0.2
 
         self.accept_event = threading.Event()
         self.stop_flag = False
@@ -553,6 +553,23 @@ class metadataTool:
         self.press("left")
         time.sleep(self.delay_finish_image)
 
+
+    def save_metadata_sidecars(self):
+        db.d("Stage: save metadata sidecars")
+        
+        # deselect all
+        self.hotkey("cmd", "d")
+        time.sleep(0.2)
+        
+        # select all
+        self.hotkey("cmd", "a")
+        time.sleep(0.4)
+        
+        # save metadata to files
+        self.hotkey("cmd", "s")
+        time.sleep(0.5)
+
+
     def run(self):
 
         db.d("Stage: run macro")
@@ -563,6 +580,9 @@ class metadataTool:
 
         if self.stop_flag:
             return
+        
+
+        self.save_metadata_sidecars()
 
         self.apply_exif_dates()
 
@@ -643,13 +663,15 @@ class metadataTool:
                 db.d(f"Skip EXIF date {i}/{len(self.data)}: already correct")
                 continue
 
+            xmp_path = Path(raw_path).with_suffix(".xmp")
+
             cmd = [
-                "exiftool",
-                f"-DateTimeOriginal={dt_original}",
-                f"-CreateDate={dt_original}",
-                f"-ModifyDate={dt_original}",
-                "-overwrite_original",
-                raw_path
+            "exiftool",
+            f"-DateTimeOriginal={dt_original}",
+            f"-CreateDate={dt_original}",
+            f"-ModifyDate={dt_original}",
+            "-overwrite_original",
+            str(xmp_path)
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -671,6 +693,18 @@ class metadataTool:
 
         db.d("Stage: Lightroom save/read metadata from files")
 
+        # deselect all
+        self.hotkey("cmd", "d")
+        time.sleep(0.2)
+        
+        # select all
+        self.hotkey("cmd", "a")
+        time.sleep(0.4)
+
+        print('pause')
+        time.sleep(2)
+
+
         script = '''
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
@@ -679,16 +713,24 @@ class metadataTool:
         end tell
         '''
 
+        print('pause')
+        time.sleep(2)
+
         result = subprocess.run(
             ["osascript", "-e", script],
             capture_output=True,
             text=True
         )
 
+        print('pause')
+        time.sleep(2)
+
         time.sleep(1)
 
         if result.returncode != 0:
             print(result.stderr)
+
+        print('end')
 
 
     def strip_shared_nlp_fields(self, data, shared_nlp):

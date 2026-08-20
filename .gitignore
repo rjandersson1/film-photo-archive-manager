@@ -50,3 +50,8 @@ data/
 # data/example\ metadata/**/*.arw
 Code overview.mk
 .DS_Store
+lrplugin-dev/sdk/*
+.vscode/settings.json
+lrplugin-dev/metadata.*
+metadata.json
+metadata.xlsx
