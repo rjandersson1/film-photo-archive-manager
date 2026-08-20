@@ -20,7 +20,7 @@ class db:
 
 class metadataTool:
 
-    def __init__(self):
+    def __init__(self, xlsx_path=None, raw_folder=None):
 
         self.ignore_esc = False
 
@@ -47,20 +47,32 @@ class metadataTool:
         self.listener.start()
 
         self.script_dir = Path(__file__).parent
-        print(self.script_dir)
-        self.xlsx_path = self.script_dir / "metadata.xlsx"
-        self.json_path = self.script_dir / "metadata.json"
+
+        # Allow an external caller (eg. importMetadata.py) to point this at a specific
+        # roll's metadata xlsx / raw folder instead of always using the fixed
+        # lrplugin-dev/metadata.xlsx. Calling metadataTool() with no args keeps the
+        # original standalone behaviour unchanged.
+        self.xlsx_path = Path(xlsx_path) if xlsx_path else self.script_dir / "metadata.xlsx"
+        self.json_path = self.xlsx_path.with_suffix('.json')
+        self.raw_folder = Path(raw_folder) if raw_folder else None
         print(self.xlsx_path)
 
         db.d("Stage: check excel")
 
         if not self.xlsx_path.exists():
 
+            if xlsx_path is not None:
+                # Caller told us exactly where the roll's xlsx should be; if it's missing
+                # that's an upstream error (eg. newRoll.py never ran for this roll), not
+                # something to silently recover from by popping a folder picker.
+                db.d(f"metadata xlsx not found at {self.xlsx_path}")
+                raise FileNotFoundError(f"Expected metadata xlsx at {self.xlsx_path}")
+
             db.d("metadata.xlsx not found")
             db.d("Stage: select raw folder")
 
-            raw_folder = self.select_raw_folder()
-            raw_files = self.get_raw_files_from_folder(raw_folder)
+            raw_folder_selected = self.select_raw_folder()
+            raw_files = self.get_raw_files_from_folder(raw_folder_selected)
 
             db.d(f"Raw files found for template: {len(raw_files)}")
 
