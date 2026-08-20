@@ -274,12 +274,16 @@ def build_metadata_template(roll_root, folder_name, raw_files, stk_entry, cam_en
         row[1] = fname                          # rawFileName
         row[2] = os.path.join(roll_root, '01_scans', fname)  # rawFilePath
 
-        row[10] = stk_entry.get('stk')          # Intellectual Genre -- matches STK
-        # Scene should eventually be CAM + LNS (eg. "F3 55f2.8"), but no lens ID exists
-        # yet at roll-creation time (lens is only known once EXIF exists) -- prefill with
-        # just CAM for now, matching your existing filled-out rolls, and append LNS in a
-        # later pass once frames have lens data (TODO, see importMetadata.py).
-        row[11] = cam_entry.get('id')           # Scene -- CAM for now, CAM+LNS later
+        # Corrected mapping (was swapped relative to your established
+        # existing rolls -- verified against real historical files): Scene
+        # holds the stock code, Intellectual Genre holds camera(+lens).
+        row[10] = cam_entry.get('id')           # Intellectual Genre -- CAM for now, CAM+LNS later
+        # Intellectual Genre should eventually be CAM + LNS (eg. "F3 28mm2.8"),
+        # but no lens ID exists yet at roll-creation time (lens is only known
+        # once EXIF exists) -- prefill with just CAM for now, matching your
+        # existing filled-out rolls, and append LNS in a later pass once
+        # frames have lens data (see importMetadata.py / metadataTool.py).
+        row[11] = stk_entry.get('stk')           # Scene -- matches STK
 
         row[12] = cam_entry.get('brand')        # Camera Make
         row[13] = cam_entry.get('model')        # Camera Model

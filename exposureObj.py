@@ -395,17 +395,14 @@ class exposureObj:
         self.country    = self.get_exif(("IPTC", "Country-PrimaryLocationName"))
         self.verify_location() # hardcode fix for [035][34-35], [083][05]
 
-        # Film stock identifier. newRoll.py's xlsx schema puts the stock code
-        # in "Intellectual Genre" (Scene is reserved for camera+lens -- see
-        # newRoll.py's build_metadata_template(): "row[10] = ... # Intellectual
-        # Genre -- matches STK" / "row[11] = ... # Scene -- CAM for now,
-        # CAM+LNS later"), but this previously only ever read Scene -- which
-        # now genuinely holds camera+lens content (this session's Scene+lens
-        # work), causing "F3" to be looked up as a stock code instead of
-        # "APX100". Try Intellectual Genre first; fall back to Scene for
-        # older rolls that predate that schema and may only have it there, so
-        # already-cleaned legacy rolls don't regress.
-        self.stk        = self.get_exif(("XMP-iptcCore", "IntellectualGenre")) or self.get_exif(("XMP-iptcCore", "Scene"))
+        # Film stock identifier. Corrected: newRoll.py's xlsx schema had
+        # Intellectual Genre/Scene swapped relative to your established,
+        # already-cleaned rolls -- Scene holds the stock code, Intellectual
+        # Genre holds camera(+lens). The earlier "try Intellectual Genre
+        # first" version was chasing that swapped (incorrect) schema; with
+        # newRoll.py's mapping now fixed to match, Scene is once again the
+        # right (and only) source here.
+        self.stk        = self.get_exif(("XMP-iptcCore", "Scene"))
         self.rating     = self.get_exif(("XMP-xmp", "Rating"), conv=int)
         if self.rating is None:
             self.rating = 0

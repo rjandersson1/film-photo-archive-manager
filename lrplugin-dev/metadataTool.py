@@ -241,8 +241,9 @@ class metadataTool:
 
     @staticmethod
     def _parse_lens_info(lens_model):
-        """Parses '{focal}/{maxAperture}' (eg. '28/2.8') out of a free-text Lens
-        Model string (eg. '28mm f/2.8'), for appending onto Scene. Mirrors
+        """Parses '{focal}mm{maxAperture}' (eg. '28mm2.8') out of a free-text Lens
+        Model string (eg. '28mm f/2.8'), for appending onto Intellectual Genre
+        (the camera(+lens) field -- Scene is the stock field). Mirrors
         exposureObj.py's LensModel-derived maxAperture rules exactly (see
         _update_from_exif() ~lines 355-364) and its cast_lns() 'mm' focal-length
         fallback (~lines 277-281), since that parsing has already been validated
@@ -279,7 +280,7 @@ class metadataTool:
 
         aperture_str = f'{max_aperture:.0f}' if max_aperture > 10 else f'{max_aperture:.1f}'
 
-        return f'{focal}/{aperture_str}'
+        return f'{focal}mm{aperture_str}'
 
     def process_excel(self):
 
@@ -288,7 +289,7 @@ class metadataTool:
 
         data = []
         date_counter = {}
-        xlsx_scene_updated = False
+        xlsx_updated = False
 
         for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
 
@@ -349,28 +350,31 @@ class metadataTool:
             if raw is None:
                 continue
 
-            # Append the lens's focal length + max aperture to Scene, eg.
-            # (Scene="F3", Lens Model="28mm f/2.8") --> Scene="F3 + 28/2.8".
-            # Reuses exposureObj.py's exact LensModel-parsing rules (see
-            # exposureObj.py _update_from_exif(), ~lines 355-364, and cast_lns())
-            # rather than a new parser, since that logic is already validated
-            # against real EXIF LensModel strings across the whole archive.
+            # Append the lens's focal length + max aperture to Intellectual
+            # Genre (the camera(+lens) field -- Scene is the stock field, eg.
+            # (Intellectual Genre="F3", Lens Model="28mm f/2.8") -->
+            # Intellectual Genre="F3 28mm2.8". Reuses exposureObj.py's exact
+            # LensModel-parsing rules (see exposureObj.py _update_from_exif(),
+            # ~lines 355-364, and cast_lns()) rather than a new parser, since
+            # that logic is already validated against real EXIF LensModel
+            # strings across the whole archive.
             lens_info = self._parse_lens_info(lens_model)
             if lens_info:
-                # Idempotency guard: if this row's already been run through this
-                # pass before, Scene already ends with (or, if it started blank,
-                # already equals) the expected lens suffix -- skip re-appending
-                # it, otherwise reruns pile up "F3 + 28/2.8 + 28/2.8 + ...".
-                already_applied = scene == lens_info or (scene and scene.endswith(f" + {lens_info}"))
+                # Idempotency guard: if this row's already been run through
+                # this pass before, Intellectual Genre already ends with (or,
+                # if it started blank, already equals) the expected lens
+                # suffix -- skip re-appending it, otherwise reruns pile up
+                # "F3 28mm2.8 28mm2.8 ...".
+                already_applied = intellectual_genre == lens_info or (intellectual_genre and intellectual_genre.endswith(f" {lens_info}"))
                 if not already_applied:
-                    scene = f"{scene} + {lens_info}" if scene else lens_info
-                    # Persist into the actual xlsx cell, not just this in-memory
-                    # record -- the original ask was for the source file itself
-                    # to show "F3 + 28/2.8", not only whatever gets handed to
-                    # Lightroom. Scene is column 12 (L) -- see METADATA_COLUMNS /
-                    # generate_template().
-                    ws.cell(row=row_num, column=12, value=scene)
-                    xlsx_scene_updated = True
+                    intellectual_genre = f"{intellectual_genre} {lens_info}" if intellectual_genre else lens_info
+                    # Persist into the actual xlsx cell, not just this
+                    # in-memory record -- the original ask was for the source
+                    # file itself to show "F3 28mm2.8", not only whatever gets
+                    # handed to Lightroom. Intellectual Genre is column 11 (K)
+                    # -- see METADATA_COLUMNS / generate_template().
+                    ws.cell(row=row_num, column=11, value=intellectual_genre)
+                    xlsx_updated = True
 
             date_created = None
             exif_datetime_original = None
@@ -443,9 +447,9 @@ class metadataTool:
 
             data.append(record)
 
-        if xlsx_scene_updated:
+        if xlsx_updated:
             wb.save(self.xlsx_path)
-            db.d(f"Scene updated with lens info and saved back to {self.xlsx_path}")
+            db.d(f"Intellectual Genre updated with lens info and saved back to {self.xlsx_path}")
 
         return data
 
