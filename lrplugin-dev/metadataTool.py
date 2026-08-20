@@ -487,6 +487,8 @@ class metadataTool:
         time.sleep(0.4)
 
         script = '''
+        tell application "Adobe Lightroom Classic" to activate
+        delay 0.3
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
                 click menu item "   JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
@@ -494,11 +496,31 @@ class metadataTool:
         end tell
         '''
 
-        subprocess.run(
+        # This is the step that actually applies Sublocation/City/State/Country/
+        # Intellectual Genre/Scene/dateCreated (everything in each record's "standard"
+        # block) -- it was previously run with stdout/stderr sent to DEVNULL and no
+        # returncode check, so a failed menu click (eg. Lightroom not frontmost, or the
+        # custom lrplugin-dev plugin not installed/enabled) looked identical to success:
+        # nothing printed, script kept going, and none of that metadata ever landed.
+        result = subprocess.run(
             ["osascript", "-e", script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            capture_output=True,
+            text=True
         )
+
+        if result.returncode != 0:
+            print("=" * 70)
+            print("ERROR: JSON Import menu click failed.")
+            print("Sublocation/City/State/Country/Intellectual Genre/Scene/dateCreated")
+            print("were NOT applied to any photo. Stopping here rather than continuing")
+            print("as if it worked.")
+            print(result.stderr.strip())
+            print('Check that Lightroom is frontmost and Library > Plug-in Extras >')
+            print('"   JSON Import" exists in the menu (the custom lrplugin-dev plugin')
+            print('may need reinstalling/re-enabling).')
+            print("=" * 70)
+            self.stop_flag = True
+            return
 
         time.sleep(1.0)
 
@@ -726,11 +748,12 @@ class metadataTool:
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
-        print('pause')
+        db.d("Stage: refresh -- waiting for selection to settle")
         time.sleep(2)
 
-
         script = '''
+        tell application "Adobe Lightroom Classic" to activate
+        delay 0.3
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
                 click menu item "Read Metadata from File" of menu 1 of menu bar item "Metadata" of menu bar 1
@@ -738,7 +761,7 @@ class metadataTool:
         end tell
         '''
 
-        print('pause')
+        db.d("Stage: refresh -- running AppleScript menu click")
         time.sleep(2)
 
         result = subprocess.run(
@@ -747,15 +770,21 @@ class metadataTool:
             text=True
         )
 
-        print('pause')
+        db.d("Stage: refresh -- menu click done")
         time.sleep(2)
 
         time.sleep(1)
 
         if result.returncode != 0:
-            print(result.stderr)
+            # Non-fatal: apply_exif_dates() already wrote the corrected date into the
+            # .xmp sidecar on disk regardless of whether Lightroom's UI picked it up here,
+            # so nothing is lost -- Lightroom just won't show the updated date until it
+            # re-reads that file some other way (eg. manually, or next relaunch).
+            print("WARNING: 'Read Metadata from File' menu click failed -- Lightroom's")
+            print("displayed date may be stale, but the .xmp sidecar on disk is correct.")
+            print(result.stderr.strip())
 
-        print('end')
+        db.d("Stage: refresh -- done")
 
 
     def strip_shared_nlp_fields(self, data, shared_nlp):
