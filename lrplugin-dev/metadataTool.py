@@ -634,11 +634,8 @@ class metadataTool:
 
         self.ensure_library_module()
 
-        # deselect
-        self.hotkey("cmd", "d")
-        time.sleep(0.2)
-
-        # select all
+        # select all -- no need to deselect first, cmd+a replaces the prior
+        # selection regardless of its state.
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
@@ -758,15 +755,12 @@ class metadataTool:
 
     def save_metadata_sidecars(self):
         db.d("Stage: save metadata sidecars")
-        
-        # deselect all
-        self.hotkey("cmd", "d")
-        time.sleep(0.2)
-        
-        # select all
+
+        # select all -- no need to deselect first, cmd+a replaces the prior
+        # selection regardless of its state.
         self.hotkey("cmd", "a")
         time.sleep(0.4)
-        
+
         # save metadata to files
         self.hotkey("cmd", "s")
         time.sleep(0.5)
@@ -925,11 +919,8 @@ class metadataTool:
 
         self.ensure_library_module()
 
-        # deselect all
-        self.hotkey("cmd", "d")
-        time.sleep(0.2)
-
-        # select all
+        # select all -- no need to deselect first, cmd+a replaces the prior
+        # selection regardless of its state.
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
@@ -997,11 +988,8 @@ class metadataTool:
 
         db.d("Stage: apply shared NLP metadata")
 
-        # deselect all
-        self.hotkey("cmd", "d")
-        time.sleep(0.2)
-
-        # select all
+        # select all -- no need to deselect first, cmd+a replaces the prior
+        # selection regardless of its state.
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
