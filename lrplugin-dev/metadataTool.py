@@ -53,7 +53,13 @@ class metadataTool:
         # lrplugin-dev/metadata.xlsx. Calling metadataTool() with no args keeps the
         # original standalone behaviour unchanged.
         self.xlsx_path = Path(xlsx_path) if xlsx_path else self.script_dir / "metadata.xlsx"
-        self.json_path = self.xlsx_path.with_suffix('.json')
+        # NOTE: the Lightroom-side plugin (lrplugin-dev/data/nlp-importer.lrplugin/Importer.lua)
+        # reads from a fixed, hardcoded path -- it has no way to know which roll we're
+        # currently processing. json_path must always be that same fixed path, regardless
+        # of which roll's xlsx_path was passed in. Do NOT derive this from xlsx_path (eg.
+        # via .with_suffix('.json')) -- that produces a per-roll path the plugin never
+        # looks at, so it silently imports stale/nonexistent data.
+        self.json_path = self.script_dir / "metadata.json"
         self.raw_folder = Path(raw_folder) if raw_folder else None
         print(self.xlsx_path)
 
@@ -491,7 +497,7 @@ class metadataTool:
         delay 0.3
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
-                click menu item "   JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                click menu item "JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "File" of menu bar 1
             end tell
         end tell
         '''
@@ -515,9 +521,9 @@ class metadataTool:
             print("were NOT applied to any photo. Stopping here rather than continuing")
             print("as if it worked.")
             print(result.stderr.strip())
-            print('Check that Lightroom is frontmost and Library > Plug-in Extras >')
-            print('"   JSON Import" exists in the menu (the custom lrplugin-dev plugin')
-            print('may need reinstalling/re-enabling).')
+            print('Check that Lightroom is running and File > Plug-in Extras >')
+            print('"JSON Import" exists in the menu (Plug-in Manager > NLP Importer')
+            print('must be enabled).')
             print("=" * 70)
             self.stop_flag = True
             return
