@@ -403,10 +403,12 @@ class metadataTool:
             "cmd": Key.cmd,
             "ctrl": Key.ctrl,
             "shift": Key.shift,
+            "alt": Key.alt,
             "tab": Key.tab,
             "v": "v",
             "a": "a",
             "d": "d",
+            "1": "1",
             "enter": Key.enter
         }
 
@@ -422,7 +424,18 @@ class metadataTool:
             self.kb.release(k)
 
         time.sleep(self.delay_default)
-        
+
+    def ensure_library_module(self):
+        # Both "Metadata" (top-level) and "Library > Plug-in Extras" are menus that only
+        # exist while Lightroom is in the Library module -- if the last thing the user did
+        # was e.g. Develop, those menu items genuinely aren't in the menu bar at all, which
+        # is exactly the "-1728 Can't get menu item" error we were seeing even though the
+        # menu path/title text is correct. Cmd+Option+1 is Lightroom Classic's fixed
+        # shortcut for "go to Library module" regardless of which module is active.
+        db.d("Stage: ensure Library module active")
+        self.hotkey("cmd", "alt", "1")
+        time.sleep(0.5)
+
     def paste_text(self, text):
 
         if text is None or text == "":
@@ -484,6 +497,8 @@ class metadataTool:
 
         time.sleep(0.3)
 
+        self.ensure_library_module()
+
         # deselect
         self.hotkey("cmd", "d")
         time.sleep(0.2)
@@ -492,12 +507,19 @@ class metadataTool:
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
+        # Menu item title/hierarchy must match lrplugin-dev/data/nlp-importer.lrplugin/Info.lua
+        # exactly: LrLibraryMenuItems registers a plain "JSON Import" title (no leading
+        # spaces), and "Plug-in Extras" lives under Library. Both "Library > Plug-in Extras"
+        # and the top-level "Metadata" menu (see refresh_lr_metadata_from_files) only exist
+        # in Lightroom's Library module -- ensure_library_module() above switches into it,
+        # since that's what was actually causing the earlier "-1728 Can't get menu item"
+        # failures, not the menu text/hierarchy itself.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
         delay 0.3
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
-                click menu item "JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "File" of menu bar 1
+                click menu item "JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
             end tell
         end tell
         '''
@@ -521,7 +543,7 @@ class metadataTool:
             print("were NOT applied to any photo. Stopping here rather than continuing")
             print("as if it worked.")
             print(result.stderr.strip())
-            print('Check that Lightroom is running and File > Plug-in Extras >')
+            print('Check that Lightroom is running and Library > Plug-in Extras >')
             print('"JSON Import" exists in the menu (Plug-in Manager > NLP Importer')
             print('must be enabled).')
             print("=" * 70)
@@ -746,10 +768,12 @@ class metadataTool:
 
         db.d("Stage: Lightroom save/read metadata from files")
 
+        self.ensure_library_module()
+
         # deselect all
         self.hotkey("cmd", "d")
         time.sleep(0.2)
-        
+
         # select all
         self.hotkey("cmd", "a")
         time.sleep(0.4)

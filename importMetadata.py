@@ -69,7 +69,12 @@ def prompt_roll_folder():
 
 
 def find_metadata_xlsx(roll_root):
-    candidates = [f for f in os.listdir(roll_root) if f.lower().endswith('_metadata.xlsx')]
+    # Excel/Numbers drop a hidden lock file (eg. "~$foo_metadata.xlsx") next to any
+    # xlsx that's currently open on Mac -- ignore those, they're not real data files.
+    candidates = [
+        f for f in os.listdir(roll_root)
+        if f.lower().endswith('_metadata.xlsx') and not f.startswith('~$')
+    ]
     if len(candidates) == 0:
         return None
     if len(candidates) > 1:
