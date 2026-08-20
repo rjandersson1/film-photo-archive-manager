@@ -493,6 +493,225 @@ class importTool:
         )
         db.i(roll.dbIdx, roll_base_path)
 
+
+    def cleanRoll_in_place(self, roll, clean_raw=True, clean_jpg=True, clean_preview=True, clean_edits=True, clean_contact_sheet=True, clean_exif=True):
+        """
+        Cleans up a roll IN PLACE: writes 03_previews/04_edits/05_other outputs
+        (and copies/renames 01_scans/02_exports into the naming convention)
+        directly into roll.directory, instead of exporting to a separate
+        library tree the way cleanRoll() does.
+
+        Critically, this NEVER deletes/recreates roll_base_path first --
+        roll_base_path IS roll.directory here, so an rmtree (as cleanRoll()
+        does before writing) would destroy the very source files this is
+        about to read from.
+
+        Only safe to call for a roll that already matches the expected
+        01_scans/02_exports layout (roll.isNewCollection) -- cleanRoll.py is
+        responsible for checking that, handling any folder rename, and
+        re-importing `roll` from its final path before calling this, so every
+        path on `roll`/its images already points at the right (renamed)
+        location.
+
+        Unlike cleanRoll(), there's no library_path here, so there's also no
+        single shared cross-roll "contact sheets" index folder to copy into --
+        that concept only makes sense under one shared library_path. The
+        per-roll contact sheet under 05_other/02_contact_sheets is still
+        written.
+
+        param roll: roll object to be cleaned, already parsed from its final,
+            in-place directory (post-rename if a rename happened)
+        param clean_raw: whether to copy/rename raw files
+        param clean_jpg: whether to copy/rename main jpg files
+        param clean_preview: whether to build preview files
+        param clean_edits: whether to copy/rename edits / virtual copies
+        param clean_contact_sheet: whether to render contact sheets
+        param clean_exif: whether to export exif json
+        """
+
+        if roll.index in [37]: return
+        t1 = time()
+
+        db.i(roll.dbIdx, 'Cleaning roll in place:', f'{roll.countAll + roll.countRaw} files, {roll.sizeAll / (1024*1024):.0f}MB: {roll.countRaw} RAW, {roll.countJpg} JPG: {roll.countExposures} Exp, {roll.countCopies} Copies.')
+
+        index = roll.index_str
+        roll_base_path = roll.directory
+
+        # Build subdirectories -- unlike cleanRoll(), roll_base_path is never
+        # rmtree'd/recreated: it's the roll's own existing directory, and
+        # 01_scans/02_exports already hold the actual source files the loop
+        # below reads from.
+        scans_path = os.path.join(roll_base_path, '01_scans')
+        exports_path = os.path.join(roll_base_path, '02_exports')
+        previews_path = os.path.join(roll_base_path, '03_previews')
+        edits_path = os.path.join(roll_base_path, '04_edits')
+        other_path = os.path.join(roll_base_path, '05_other')
+        exif_path = os.path.join(other_path, '01_exif')
+        contact_sheets_path = os.path.join(other_path, '02_contact_sheets')
+        unmatchedRAW_path = os.path.join(other_path, '03_unmatched_raws')
+
+        # Warn about raw files missing
+        if roll.rawMissing:
+            db.e(roll.dbIdx, f'RAW files missing!')
+
+        # init progress bar
+        n = len(roll.images)
+        m = len(roll.images_all)
+        alpha = 2.6
+        r = roll.countRaw
+        c = roll.countCopies
+        if c is None: c = 0
+        if r is None: r = 0
+        total_length = (
+            r * clean_raw + # copy raw files
+            n * clean_jpg + # copy main jpg files
+            m * clean_preview + # copy preview files
+            c * clean_edits + # copy edits / virtual copies
+            round(alpha * m * clean_contact_sheet) + # render contact sheets
+            1 * clean_exif   # export exif json
+        )
+
+        db.d(roll.dbIdx, 'total_length:', f'\nn={n}\nm={m}\nr={r}\nc={c}')
+
+        progress_index = 0
+
+        # Copy to directories
+        for img in roll.images:
+            # Copy raw if exists to scans
+            if clean_raw and img.rawFilePath:
+                progress_index += 1
+                db.progress(
+                    pre=f"[{index}]",
+                    current=progress_index,
+                    total=total_length,
+                    post=f"[{img.index_str}] Copying RAW.......",
+                    mode="info"
+                )
+                self.copy_raw(img, scans_path)
+
+            # Copy main image jpg to exports
+            if clean_jpg:
+                progress_index += 1
+                db.progress(
+                    pre=f"[{index}]",
+                    current=progress_index,
+                    total=total_length,
+                    post=f"[{img.index_str}] Copying JPG.......",
+                    mode="info"
+                )
+                self.copy_jpg(img, exports_path)
+
+            # Copy previews if exists to previews
+            if clean_preview:
+                progress_index += 1
+                db.progress(
+                    pre=f"[{index}]",
+                    current=progress_index,
+                    total=total_length,
+                    post=f"[{img.index_str}] Copying preview...",
+                    mode="info"
+                )
+                self.copy_preview(img, previews_path)
+            # Copy edits / virtual copies to edits
+            if clean_edits:
+                for copy in img.copies:
+                    progress_index += 1
+                    db.progress(
+                        pre=f"[{index}]",
+                        current=progress_index,
+                        total=total_length,
+                        post=f"[{img.index_str}] Copying copies...",
+                        mode="info"
+                    )
+                    self.copy_jpg(copy, edits_path)
+                    self.copy_preview(copy, previews_path)
+
+
+        # copy over leftover raw files just in case
+        if clean_raw:
+            progress_index += 1
+            db.progress(
+                pre=f"[{index}]",
+                current=progress_index,
+                total=total_length,
+                post=f"Copying unmatched RAWs...",
+                mode="info"
+            )
+            self.copy_unmatched_raws(roll, unmatchedRAW_path)
+
+        # Render contact sheets
+        if clean_contact_sheet:
+
+            progress_index += 3 * m
+            output_folder = contact_sheets_path
+            save_path = roll_base_path
+            if not os.path.exists(contact_sheets_path):
+                os.makedirs(contact_sheets_path)
+            renderer = renderTool.Renderer()
+
+            # Render metadata page
+            db.progress(
+                pre=f"[All] [1/3]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheets info...",
+                mode="info"
+            )
+            renderer.render(roll, P1=0,P2=0,P3=1, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            progress_index += round(alpha / 5 * m)
+
+            # Render main page
+            db.progress(
+                pre=f"[All] [2/3]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheet...",
+                mode="info"
+            )
+            renderer.render(roll, P1=1,P2=0,P3=0, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            progress_index += round(alpha / 5 * m * 3)
+
+
+            # Render copies page
+            db.progress(
+                pre=f"[All] [3/3]",
+                current=progress_index,
+                total=total_length,
+                post=f"Rendering contact sheets...",
+                mode="info"
+            )
+            renderer.render(roll, P1=0,P2=1,P3=0, save=1, show=0, output_folder=output_folder, save_path=save_path)
+            progress_index += round(alpha / 5 * m)
+
+            # No central cross-roll "contact sheets" index-folder copy here
+            # (unlike cleanRoll()) -- that lives under a single shared
+            # library_path, which an in-place-cleaned roll doesn't have by
+            # definition. The per-roll copy above, under
+            # 05_other/02_contact_sheets, is the only contact sheet output.
+
+
+        # export exif json
+        if clean_exif:
+            roll.export_exif_json(exif_path)
+            progress_index += 1
+            db.progress(
+                pre=f"[{index}]",
+                current=progress_index,
+                total=total_length,
+                post=f"Exporting EXIF JSON...",
+                mode="info"
+            )
+
+        # Progress update
+        db.progress(
+            pre=f"[{index}]",
+            current=total_length,
+            total=total_length,
+            post=f"Finished archiving!",
+            mode="success"
+        )
+        db.i(roll.dbIdx, roll_base_path)
+
 # Library to handle file loading/offloading from local drive to external drive.
 # In short:
 # 1. Load RAW, JPG, or PNG files from external drive to external drive.

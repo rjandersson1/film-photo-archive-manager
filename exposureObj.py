@@ -133,7 +133,40 @@ class exposureObj:
         # Case 0: new style: 072_230907_10_P400_Zug_F3'_55f2.8_3s_pano.jpg
         if self.roll.isNewCollection:
             n = name.split('_')
-            self.index = int(n[2])
+            try:
+                self.index = int(n[2])
+            except (IndexError, ValueError):
+                # Two other formats can reach here for an isNewCollection
+                # roll (01_scans/02_exports exist, but the underscore
+                # convention above was never applied):
+                #
+                # (a) Lightroom's actual current export naming template:
+                #     "{date} - {index} - {location} - {stock} - {scene} - {shutter}s"
+                #     eg. "26-08-19 - 27 -  - APX100 - F3 - s" (blank location)
+                #     or  "26-08-19 - 13 -  - APX100 - F3 + 28-2.8 - s" (Scene
+                #     is "F3 + 28/2.8" in Lightroom -- exported filenames can't
+                #     contain "/", so Lightroom substitutes "-", giving
+                #     "F3 + 28-2.8"). Same shape as legacy Case 2 below
+                #     (space-dash-space delimited, index at position 1), just
+                #     for an isNewCollection-structured roll instead of a
+                #     legacy one.
+                #
+                # (b) still Lightroom's raw native export name (eg.
+                #     "DSC00003.jpg"), not yet through any rename pass at all.
+                if ' - ' in name:
+                    dash_parts = name.split(' - ')
+                    try:
+                        self.index = int(dash_parts[1])
+                    except (IndexError, ValueError):
+                        db.e(self.roll.dbIdx, 'IDX identify error! Case (0) dash-format fallback', f'{name} --> {dash_parts}')
+                        self.index = self._resolve_index_from_raw_order()
+                else:
+                    # JPG and RAW share the same basename in this workflow
+                    # (see _resolve_raw_file_path()'s exact-basename match),
+                    # and camera-assigned raw filenames (DSC00003, DSC00004,
+                    # ...) increment in capture order, so alphabetical sort
+                    # position == exposure order.
+                    self.index = self._resolve_index_from_raw_order()
 
         else:
             # Case 1: 22-10-02 Ektar 100 Seebach 1.jpg
@@ -188,6 +221,47 @@ class exposureObj:
 
 
     # =========== Private methods ================== #
+
+
+    def _resolve_index_from_raw_order(self):
+        """Fallback exposure-index resolution for process_fileName()'s Case 0,
+        used when a 'new structure' JPG isn't yet renamed to the clean
+        convention (still Lightroom's native export name, eg. "DSC00003.jpg").
+        Finds the RAW file in roll.rawDirs sharing this JPG's basename stem,
+        then returns its 1-based position among every raw file for the roll,
+        sorted by filename -- camera-assigned raw filenames (DSC00003,
+        DSC00004, ...) increment in capture order, so alphabetical sort order
+        matches exposure order. Returns None (same failure path as Cases 1-3)
+        if there's no rawDirs yet or no unique matching raw file.
+        """
+
+        if not self.roll.rawDirs:
+            return None
+
+        stem = os.path.splitext(self.name)[0].strip()
+        raw_exts = ('.arw', '.dng', '.tif', '.tiff')
+
+        all_raw_names = []
+        for rawDir in self.roll.rawDirs:
+            try:
+                for f in os.listdir(rawDir):
+                    if f.lower().endswith(raw_exts):
+                        all_raw_names.append(f)
+            except FileNotFoundError:
+                continue
+
+        all_raw_names.sort()
+
+        matches = [f for f in all_raw_names if os.path.splitext(f)[0].strip() == stem]
+        if len(matches) != 1:
+            db.e(
+                self.roll.dbIdx,
+                'IDX identify error! Case (0) fallback -- no unique matching RAW file',
+                f'{self.name} --> {stem} ({len(matches)} matches)'
+            )
+            return None
+
+        return all_raw_names.index(matches[0]) + 1
 
 
     def _resolve_raw_file_path(self):
@@ -321,7 +395,17 @@ class exposureObj:
         self.country    = self.get_exif(("IPTC", "Country-PrimaryLocationName"))
         self.verify_location() # hardcode fix for [035][34-35], [083][05]
 
-        self.stk        = self.get_exif(("XMP-iptcCore", "Scene"))
+        # Film stock identifier. newRoll.py's xlsx schema puts the stock code
+        # in "Intellectual Genre" (Scene is reserved for camera+lens -- see
+        # newRoll.py's build_metadata_template(): "row[10] = ... # Intellectual
+        # Genre -- matches STK" / "row[11] = ... # Scene -- CAM for now,
+        # CAM+LNS later"), but this previously only ever read Scene -- which
+        # now genuinely holds camera+lens content (this session's Scene+lens
+        # work), causing "F3" to be looked up as a stock code instead of
+        # "APX100". Try Intellectual Genre first; fall back to Scene for
+        # older rolls that predate that schema and may only have it there, so
+        # already-cleaned legacy rolls don't regress.
+        self.stk        = self.get_exif(("XMP-iptcCore", "IntellectualGenre")) or self.get_exif(("XMP-iptcCore", "Scene"))
         self.rating     = self.get_exif(("XMP-xmp", "Rating"), conv=int)
         if self.rating is None:
             self.rating = 0
