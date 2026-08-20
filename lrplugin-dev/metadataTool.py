@@ -507,33 +507,24 @@ class metadataTool:
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
-        # Menu item title/hierarchy: Library > Plug-in Extras > JSON Import, matching
-        # lrplugin-dev/data/nlp-importer.lrplugin/Info.lua's registered "JSON Import" title
-        # exactly (no leading spaces).
-        #
-        # Opening Library > Plug-in Extras works fine (confirmed: the submenu opens and
-        # "JSON Import" gets highlighted correctly). The failure is specifically the final
-        # "click menu item ... JSON Import" -- System Events' "click" on a menu item is a
-        # synthetic mouse move+down+up at whatever position the accessibility API reports
-        # for that item. For plugin-registered (not native Cocoa) menu items, that reported
-        # position can be slightly off from where Lightroom actually renders/hit-tests it,
-        # so the item highlights (the AX element itself was found) but the click doesn't
-        # land where Lightroom expects, and nothing fires. "perform action AXPress" instead
-        # invokes the item's action directly through the accessibility API -- no synthetic
-        # mouse coordinates involved, so this positional mismatch doesn't matter.
+        # Menu item title/hierarchy: Library > Plug-in Extras > "   JSON Import" (3 leading
+        # spaces -- Lightroom renders it indented under an auto-inserted "NLP Importer"
+        # plugin-name header at runtime; Info.lua's source title has no spaces, but that
+        # doesn't reflect the rendered/queryable name). Confirmed via a live accessibility
+        # dump of the actual submenu -- see git history for the full diagnosis.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
-        delay 1
+        delay 0.3
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
                 click menu bar item "Library" of menu bar 1
-                delay 1
+                delay 0.3
                 click menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
-                delay 1
+                delay 0.3
                 tell menu item "   JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
                     perform action "AXPress"
                 end tell
-                delay 1
+                delay 0.3
             end tell
         end tell
         '''
@@ -793,28 +784,27 @@ class metadataTool:
         time.sleep(0.4)
 
         db.d("Stage: refresh -- waiting for selection to settle")
-        time.sleep(2)
+        time.sleep(0.4)
 
-        # Same step-by-step approach as apply_lrplugin(): open the top-level menu first,
-        # then invoke the leaf item via "perform action AXPress" instead of "click" -- same
-        # symptom here (menu opens, item highlights, click doesn't fire), same fix.
+        # Menu item title: "Read Metadata from Files" (plural) -- Lightroom relabels this
+        # command based on selection count (singular "...from File" for a single photo).
+        # Our workflow always selects the whole roll, so plural is correct here.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
-        delay 1
+        delay 0.3
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
                 click menu bar item "Metadata" of menu bar 1
-                delay 1
+                delay 0.3
                 tell menu item "Read Metadata from Files" of menu 1 of menu bar item "Metadata" of menu bar 1
                     perform action "AXPress"
                 end tell
-                delay 1
+                delay 0.3
             end tell
         end tell
         '''
 
         db.d("Stage: refresh -- running AppleScript menu click")
-        time.sleep(2)
 
         result = subprocess.run(
             ["osascript", "-e", script],
@@ -823,9 +813,6 @@ class metadataTool:
         )
 
         db.d("Stage: refresh -- menu click done")
-        time.sleep(2)
-
-        time.sleep(1)
 
         if result.returncode != 0:
             # Non-fatal: apply_exif_dates() already wrote the corrected date into the
