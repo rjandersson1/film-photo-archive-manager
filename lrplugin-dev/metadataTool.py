@@ -511,14 +511,16 @@ class metadataTool:
         # lrplugin-dev/data/nlp-importer.lrplugin/Info.lua's registered "JSON Import" title
         # exactly (no leading spaces).
         #
-        # Previously this was one atomic "click menu item X of menu 1 of menu item Y of
-        # menu 1 of menu bar item Z" reference -- System Events resolves that whole chain
-        # without ever actually opening the menus on screen, which is fast but apparently
-        # unreliable for this particular submenu (consistent -1728 "Can't get menu item"
-        # even with the right module active and the right text). Clicking each level
-        # separately, with a real delay after each click, forces macOS to actually render
-        # every submenu before the next click happens -- the same sequence a human doing
-        # this by hand goes through.
+        # Opening Library > Plug-in Extras works fine (confirmed: the submenu opens and
+        # "JSON Import" gets highlighted correctly). The failure is specifically the final
+        # "click menu item ... JSON Import" -- System Events' "click" on a menu item is a
+        # synthetic mouse move+down+up at whatever position the accessibility API reports
+        # for that item. For plugin-registered (not native Cocoa) menu items, that reported
+        # position can be slightly off from where Lightroom actually renders/hit-tests it,
+        # so the item highlights (the AX element itself was found) but the click doesn't
+        # land where Lightroom expects, and nothing fires. "perform action AXPress" instead
+        # invokes the item's action directly through the accessibility API -- no synthetic
+        # mouse coordinates involved, so this positional mismatch doesn't matter.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
         delay 1
@@ -528,7 +530,9 @@ class metadataTool:
                 delay 1
                 click menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
                 delay 1
-                click menu item "JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                tell menu item "   JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                    perform action "AXPress"
+                end tell
                 delay 1
             end tell
         end tell
@@ -791,9 +795,9 @@ class metadataTool:
         db.d("Stage: refresh -- waiting for selection to settle")
         time.sleep(2)
 
-        # Same step-by-step-click approach as apply_lrplugin() -- click the top-level menu
-        # first, then the leaf item, each with a real delay, instead of one atomic nested
-        # reference.
+        # Same step-by-step approach as apply_lrplugin(): open the top-level menu first,
+        # then invoke the leaf item via "perform action AXPress" instead of "click" -- same
+        # symptom here (menu opens, item highlights, click doesn't fire), same fix.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
         delay 1
@@ -801,7 +805,9 @@ class metadataTool:
             tell process "Adobe Lightroom Classic"
                 click menu bar item "Metadata" of menu bar 1
                 delay 1
-                click menu item "Read Metadata from File" of menu 1 of menu bar item "Metadata" of menu bar 1
+                tell menu item "Read Metadata from Files" of menu 1 of menu bar item "Metadata" of menu bar 1
+                    perform action "AXPress"
+                end tell
                 delay 1
             end tell
         end tell
@@ -826,7 +832,7 @@ class metadataTool:
             # .xmp sidecar on disk regardless of whether Lightroom's UI picked it up here,
             # so nothing is lost -- Lightroom just won't show the updated date until it
             # re-reads that file some other way (eg. manually, or next relaunch).
-            print("WARNING: 'Read Metadata from File' menu click failed -- Lightroom's")
+            print("WARNING: 'Read Metadata from Files' menu click failed -- Lightroom's")
             print("displayed date may be stale, but the .xmp sidecar on disk is correct.")
             print(result.stderr.strip())
 
