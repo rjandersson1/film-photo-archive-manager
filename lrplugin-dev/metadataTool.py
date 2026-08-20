@@ -18,6 +18,19 @@ class db:
         print(f"[DEBUG] {msg}")
 
 
+# Hardcoded monitor-calibration positions, captured once via calibrate() for a
+# fixed monitor/Lightroom-panel layout. Edit these directly if your monitor
+# setup or panel layout changes, instead of re-running calibration every time.
+# If ANY of these is None, __init__ leaves the matching self.*_pos as None,
+# and run() falls back to running calibrate() (which re-prompts for and
+# re-captures all five together) -- see run().
+CAMERA_MAKE_POS = (2417, 489)
+FILM_FORMAT_POS = (2431, 589)
+SCAN_METHOD_POS = (2410, 835)
+PUSH_PULL_POS = (2402, 979)
+DEVELOPED_AT_POS = (2401, 992)
+
+
 class metadataTool:
 
     def __init__(self, xlsx_path=None, raw_folder=None):
@@ -37,16 +50,16 @@ class metadataTool:
         self.pause_field = False
         self.pause_nextImage = False
 
-        self.cameraMake_pos = None
+        self.cameraMake_pos = CAMERA_MAKE_POS
 
         # Lightroom combo-box/dropdown fields -- unlike the free-text fields in
         # self.fields, these can't be reached by tabbing and can't be filled via
         # paste_text(); they're selected via calibrated click + up/down-arrow +
         # enter (see calibrate() / select_dropdown() / apply_dropdown_fields()).
-        self.filmFormat_pos = None
-        self.scanMethod_pos = None
-        self.pushPull_pos = None
-        self.developedAt_pos = None
+        self.filmFormat_pos = FILM_FORMAT_POS
+        self.scanMethod_pos = SCAN_METHOD_POS
+        self.pushPull_pos = PUSH_PULL_POS
+        self.developedAt_pos = DEVELOPED_AT_POS
 
         self.kb = Controller()
 
@@ -764,8 +777,18 @@ class metadataTool:
         db.d("Stage: run macro")
 
         print("\nPress ESC anytime to stop\n")
-        
-        self.calibrate()
+
+        # Skip the manual calibration prompts entirely once all five positions
+        # are hardcoded above -- only fall back to calibrate() (which re-prompts
+        # for and re-captures all five together) if any is still unset.
+        if any(p is None for p in (
+            self.cameraMake_pos,
+            self.filmFormat_pos,
+            self.scanMethod_pos,
+            self.pushPull_pos,
+            self.developedAt_pos,
+        )):
+            self.calibrate()
 
         if self.stop_flag:
             return
@@ -1120,11 +1143,9 @@ class metadataTool:
 
         db.d("Stage: apply dropdown fields (Film Format / Scan Method / Push-Pull / Developed At)")
 
-        # deselect all
-        self.hotkey("cmd", "d")
-        time.sleep(0.2)
-
-        # select all
+        # select all -- no need to deselect first: cmd+a selects everything
+        # regardless of prior selection state, so the deselect+redraw that used
+        # to run here first was pure wasted time.
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
