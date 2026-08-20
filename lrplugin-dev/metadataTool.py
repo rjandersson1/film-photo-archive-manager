@@ -507,19 +507,29 @@ class metadataTool:
         self.hotkey("cmd", "a")
         time.sleep(0.4)
 
-        # Menu item title/hierarchy must match lrplugin-dev/data/nlp-importer.lrplugin/Info.lua
-        # exactly: LrLibraryMenuItems registers a plain "JSON Import" title (no leading
-        # spaces), and "Plug-in Extras" lives under Library. Both "Library > Plug-in Extras"
-        # and the top-level "Metadata" menu (see refresh_lr_metadata_from_files) only exist
-        # in Lightroom's Library module -- ensure_library_module() above switches into it,
-        # since that's what was actually causing the earlier "-1728 Can't get menu item"
-        # failures, not the menu text/hierarchy itself.
+        # Menu item title/hierarchy: Library > Plug-in Extras > JSON Import, matching
+        # lrplugin-dev/data/nlp-importer.lrplugin/Info.lua's registered "JSON Import" title
+        # exactly (no leading spaces).
+        #
+        # Previously this was one atomic "click menu item X of menu 1 of menu item Y of
+        # menu 1 of menu bar item Z" reference -- System Events resolves that whole chain
+        # without ever actually opening the menus on screen, which is fast but apparently
+        # unreliable for this particular submenu (consistent -1728 "Can't get menu item"
+        # even with the right module active and the right text). Clicking each level
+        # separately, with a real delay after each click, forces macOS to actually render
+        # every submenu before the next click happens -- the same sequence a human doing
+        # this by hand goes through.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
-        delay 0.3
+        delay 1
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
+                click menu bar item "Library" of menu bar 1
+                delay 1
+                click menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                delay 1
                 click menu item "JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                delay 1
             end tell
         end tell
         '''
@@ -781,12 +791,18 @@ class metadataTool:
         db.d("Stage: refresh -- waiting for selection to settle")
         time.sleep(2)
 
+        # Same step-by-step-click approach as apply_lrplugin() -- click the top-level menu
+        # first, then the leaf item, each with a real delay, instead of one atomic nested
+        # reference.
         script = '''
         tell application "Adobe Lightroom Classic" to activate
-        delay 0.3
+        delay 1
         tell application "System Events"
             tell process "Adobe Lightroom Classic"
+                click menu bar item "Metadata" of menu bar 1
+                delay 1
                 click menu item "Read Metadata from File" of menu 1 of menu bar item "Metadata" of menu bar 1
+                delay 1
             end tell
         end tell
         '''
