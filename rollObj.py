@@ -446,6 +446,7 @@ class rollObj:
             "-IPTC:Province-State",
             "-IPTC:Country-PrimaryLocationName",
             "-XMP-iptcCore:Scene",
+            "-XMP-iptcCore:IntellectualGenre",
             "-XMP-xmp:Rating",
             "-ExifIFD:ISO",
             "-ExifIFD:FNumber",
