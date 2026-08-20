@@ -3,7 +3,8 @@
 # reexport [84]
 # handle HDR
 # refactor functions and clean everything up...
-
+# gen template for a new roll files.
+# fix big where if rolldir contains only raw files (no folders), it cannot import correctly.
 # reworking exif saving: (tests done for 072, 074, 083, 085)
 # - v0: cmd request fetch exif every image (batched by roll, with +10s savings).
 #               benchmark time:     65.00s (full! old library)
@@ -53,7 +54,7 @@ importlib.reload(renderTool)
 importlib.reload(importTool)
 
 # ======================== Setup Vars ================================
-DEVMODE = 1         # If true, work in local dir. If false, work in production dir. Contains rolls 72, 74, 83, 85
+DEVMODE = 0         # If true, work in local dir. If false, work in production dir. Contains rolls 72, 74, 83, 85
 CLEANMODE = 0    # import from cleaned library
 EXTERNAL_SSD = 0
 
@@ -61,15 +62,17 @@ EXTERNAL_SSD = 0
 # rolls_to_import = [72, 74, 83, 85]
 # rolls_to_import = [3, 9, 12, 13, 35, 37, 53, 65, 66, 84] # problem rolls
 # rolls_to_import = [3, 9, 12, 13]
-# rolls_to_import = '19-150'
-rolls_to_import = [84]
+# rolls_to_import = [922,923,924,925,926]
+# rolls_to_import = '93-111'
+rolls_to_import = [14]
 
 
 # deine wallpaper path
 wallpaper_path = r'/Users/rja/Documents/Wallpapers/wallpapers-1'
 
 # define library path for cleaning up
-library_clean = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography'
+# library_clean = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography'
+library_clean = r'/Users/rja/Photography/Temporary'
 
 
 # ====================================================================
@@ -84,7 +87,8 @@ if DEVMODE:
         library = r'/Users/rja/Documents/Coding/film-photo-archive-manager/data/photography/film/library'
 else:
     sys.path.append(os.path.abspath(r'C:\A_Documents\Documents\Coding\Lightroom_FileFinder'))
-    library = r'/Users/rja/Photography/Film Scanning'
+    # library = r'/Users/rja/Photography/Film Scanning'
+    library = r'/Users/rja/Photography/Film Scanning/Temp/'
     if EXTERNAL_SSD:
         library = r'/Volumes/NVME_C/Film Scanning'
         library_clean = r'/Volumes/NVME_C/photography'
@@ -126,11 +130,33 @@ for i in range(3):
 # =================================================================================
 # =================================================================================
 renderer = renderTool.Renderer()
+startDates = set()
 for roll in collection.rolls:
     # importer.cleanRoll(roll, library_path=library_clean, clean_raw=1, clean_jpg=0, clean_preview=0, clean_edits=0, clean_contact_sheet=0, clean_exif=0)
-    # importer.cleanRoll(roll, library_path=library_clean)
-    renderer.render(roll, P1=0, P2=0, P3=1, show=True)
-    
+    importer.cleanRoll(roll, library_path=library_clean)
+    # renderer.render(roll, P1=1, P2=1, P3=1, show=True)
+    # print(roll.index, roll.startDate, roll.endDate)
+    # startDates.add((roll.index, roll.startDate, roll.name))
+
+
+    # img1 = roll.getImage(10)
+    # img1.display()
+
+    # roll.getImage(8).display(100)
+    # roll.getImage(10).display(100)
+
+    # dir = roll.rawDirs[0]
+    # # print(dir)
+    # # print(os.listdir(dir))
+    # print('\n')
+
+    # for f in os.listdir(dir):
+    #     print(f)
+
+    # print("DEBUG","-"*190)
+    # for img in roll.images_all:
+    #     print(f'idx:{img.index}\t\tidx_original:{img.index_original}\t\trawFileName:{img.rawFileName}\t\tdateExposed:{img.dateExposed}\t\tcopyCount:{img.copyCount}\t\tisCopy:{img.isCopy}\t\tisPano:{int(img.isPano)}')
+    # print("DEBUG","-"*190,'\n')
     # for img in roll.images_all:
         # print(os.path.basename(img.rawFileName) if img.rawFileName else None)
     #     print(img.exif)
@@ -140,6 +166,17 @@ for roll in collection.rolls:
         # print(img.lns)
     
     continue
+
+
+# sort startDates by startDate[1]
+# startDates = sorted(startDates, key=lambda x: x[1])
+# for i, startDate in enumerate(startDates):
+#     oldIndex = startDate[0] - 900 - 22 + 93
+#     newIndex = i + 93
+#     if oldIndex != newIndex:
+#         print(f'{oldIndex}\t{newIndex} \t{startDate[2]}\t\t{startDate[1]}')
+#     else:
+#         print(f'{oldIndex}\t{newIndex} \t{startDate[2]}\t\t{startDate[1]}')
 
 
 # =================================================================================
