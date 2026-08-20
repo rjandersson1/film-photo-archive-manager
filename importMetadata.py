@@ -25,11 +25,39 @@
 
 import os
 import importlib.util
+import threading
 
 from openpyxl import load_workbook, Workbook
+from pynput import keyboard
 
 import collectionObj
 from newRoll import LIBRARY_PATH, RAW_EXTS, METADATA_COLUMNS, list_raw_files
+
+
+def wait_for_keypress(prompt, accept_key="."):
+    """Blocks until accept_key is pressed, via a global (system-wide) keyboard
+    listener -- same mechanism as metadataTool.calibrate()'s capture loop --
+    rather than input(), which only registers Enter while the terminal itself
+    is focused. This breakpoint sits right before Lightroom needs to be
+    focused (roll selected, sorted, all frames selected), so the old
+    input()-based prompt required an awkward terminal-focus -> Lightroom-focus
+    round trip right at the point Lightroom focus is what's actually needed."""
+
+    print(prompt)
+    print(f"Press <{accept_key}> to continue\n")
+
+    accept_event = threading.Event()
+
+    def on_press(key):
+        if hasattr(key, "char") and key.char == accept_key:
+            accept_event.set()
+
+    listener = keyboard.Listener(on_press=on_press)
+    listener.start()
+
+    accept_event.wait()
+
+    listener.stop()
 
 
 def find_roll_folder(library_path, index):
@@ -214,9 +242,10 @@ def main():
             return
 
     print(f'\n[{str(index).zfill(3)}] xlsx and 01_scans match ({xlsx_count} files). Proceeding to Lightroom import.')
-    print('Make sure the roll is open in Quick Collection, sorted by filename ascending, with all')
-    print('frames selected before this continues.')
-    input('Press Enter to start...')
+    wait_for_keypress(
+        'Make sure the roll is open in Quick Collection, sorted by filename ascending, '
+        'with all frames selected before this continues.'
+    )
 
     MetadataTool = load_metadata_tool_class()
     tool = MetadataTool(xlsx_path=xlsx_path, raw_folder=scans_path)

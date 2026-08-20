@@ -347,13 +347,20 @@ class metadataTool:
             # against real EXIF LensModel strings across the whole archive.
             lens_info = self._parse_lens_info(lens_model)
             if lens_info:
-                scene = f"{scene} + {lens_info}" if scene else lens_info
-                # Persist into the actual xlsx cell, not just this in-memory
-                # record -- the original ask was for the source file itself to
-                # show "F3 + 28/2.8", not only whatever gets handed to Lightroom.
-                # Scene is column 12 (L) -- see METADATA_COLUMNS / generate_template().
-                ws.cell(row=row_num, column=12, value=scene)
-                xlsx_scene_updated = True
+                # Idempotency guard: if this row's already been run through this
+                # pass before, Scene already ends with (or, if it started blank,
+                # already equals) the expected lens suffix -- skip re-appending
+                # it, otherwise reruns pile up "F3 + 28/2.8 + 28/2.8 + ...".
+                already_applied = scene == lens_info or (scene and scene.endswith(f" + {lens_info}"))
+                if not already_applied:
+                    scene = f"{scene} + {lens_info}" if scene else lens_info
+                    # Persist into the actual xlsx cell, not just this in-memory
+                    # record -- the original ask was for the source file itself
+                    # to show "F3 + 28/2.8", not only whatever gets handed to
+                    # Lightroom. Scene is column 12 (L) -- see METADATA_COLUMNS /
+                    # generate_template().
+                    ws.cell(row=row_num, column=12, value=scene)
+                    xlsx_scene_updated = True
 
             date_created = None
             exif_datetime_original = None
@@ -1011,12 +1018,12 @@ class metadataTool:
 
             self.press("tab")
 
-        # close metadata editing and return to single-image workflow
+        # close metadata editing (exit field focus) -- stay on the full-roll
+        # selection here rather than deselecting down to a single photo.
+        # apply_dropdown_fields() runs next and also needs every photo
+        # selected, so dropping to one photo and reselecting all a few lines
+        # later was pure wasted deselect/reselect.
         self.press("esc")
-        time.sleep(self.delay_finish_image)
-        self.hotkey("cmd", "d")
-        time.sleep(self.delay_finish_image)
-        self.press("left")
         time.sleep(self.delay_finish_image)
 
 
