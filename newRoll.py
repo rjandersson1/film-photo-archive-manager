@@ -15,7 +15,8 @@
 #   3) opens 01_scans in Finder and waits for you to copy raw files in
 #   4) builds a per-frame metadata.xlsx template (same schema as
 #      lrplugin-dev/metadataTool.py's generate_template()) for the raw files found,
-#      prefilled with the roll-level STK/CAM you already entered
+#      prefilled with the roll-level STK/CAM/lab-name you already entered plus a set of
+#      hardcoded roll-wide defaults (scan equipment, light source, film holder by format)
 #
 # Usage:
 #   python newRoll.py
@@ -34,6 +35,13 @@ import collectionObj
 LIBRARY_PATH = r'/Users/rja/Photography/0_Working/1_Imports/'
 
 RAW_EXTS = ('.arw', '.dng', '.tif', '.tiff')
+
+# Roll-wide metadata defaults, hardcoded per your fixed workflow. Edit these if your
+# gear/lab setup changes.
+SCAN_EQUIPMENT = 'AS-2'
+LIGHT_SOURCE = 'Cinelite'
+FILM_HOLDER_135 = 'AS-135-2'
+FILM_HOLDER_120 = 'AS-120-2'
 
 METADATA_COLUMNS = [
     "Index", "rawFileName", "rawFilePath",
@@ -137,6 +145,25 @@ def prompt_name():
         print('Name is required.')
 
 
+def prompt_lab_name():
+    while True:
+        raw = input('Lab name: ').strip()
+        if raw:
+            return raw
+        print('Lab name is required.')
+
+
+def resolve_film_holder(cam_entry):
+    # cameralist.xlsx's `filmtype` is the base spool format (135/120/45/810), distinct
+    # from `filmformat` (the frame geometry, eg. 6x6/6x7 -- see renderTool.FORMATS).
+    filmtype = (cam_entry.get('filmtype') or '').strip()
+    if filmtype == '135':
+        return FILM_HOLDER_135
+    if filmtype == '120':
+        return FILM_HOLDER_120
+    return None
+
+
 def build_folder_name(index, stk_entry, cam_entry, name):
     today = datetime.now()
     # {YY-MMs-MMe}: start month == end month == today's month, since no exposures exist yet.
@@ -181,21 +208,41 @@ def list_raw_files(scans_path):
     return files
 
 
-def build_metadata_template(roll_root, folder_name, raw_files, stk_entry, cam_entry):
+def build_metadata_template(roll_root, folder_name, raw_files, stk_entry, cam_entry, lab_name):
     wb = Workbook()
     ws = wb.active
     ws.title = 'Metadata'
     ws.append(METADATA_COLUMNS)
+
+    film_holder = resolve_film_holder(cam_entry)
 
     for i, fname in enumerate(raw_files, start=1):
         row = [None] * len(METADATA_COLUMNS)
         row[0] = i                              # Index
         row[1] = fname                          # rawFileName
         row[2] = os.path.join(roll_root, '01_scans', fname)  # rawFilePath
+
+        row[10] = stk_entry.get('stk')          # Intellectual Genre -- matches STK
+        # Scene should eventually be CAM + LNS (eg. "F3 55f2.8"), but no lens ID exists
+        # yet at roll-creation time (lens is only known once EXIF exists) -- prefill with
+        # just CAM for now, matching your existing filled-out rolls, and append LNS in a
+        # later pass once frames have lens data (TODO, see importMetadata.py).
+        row[11] = cam_entry.get('id')           # Scene -- CAM for now, CAM+LNS later
+
         row[12] = cam_entry.get('brand')        # Camera Make
         row[13] = cam_entry.get('model')        # Camera Model
+
         row[16] = stk_entry.get('stock')        # Film Stock
         row[17] = stk_entry.get('boxspeed')     # Film ISO
+        row[19] = stk_entry.get('boxspeed')     # Shot at ISO -- matches ISO (box speed by default; edit per-row if pushed/pulled)
+
+        row[24] = SCAN_EQUIPMENT                # Scan Equipment
+        row[25] = LIGHT_SOURCE                  # Light Source
+        row[26] = film_holder                   # Film Holder (135/120, by camera's filmtype)
+
+        row[28] = stk_entry.get('process')      # Developer -- matches stock's process (C41/E6/BNW)
+        row[32] = lab_name                      # Dev Notes -- lab name
+
         ws.append(row)
 
     out_path = os.path.join(roll_root, f'{folder_name}_metadata.xlsx')
@@ -212,6 +259,10 @@ def main():
     stk_entry = prompt_stock(collection)
     cam_entry = prompt_camera(collection)
     name = prompt_name()
+    lab_name = prompt_lab_name()
+
+    if resolve_film_holder(cam_entry) is None:
+        print(f'Note: camera filmtype "{cam_entry.get("filmtype")}" has no Film Holder default.')
 
     folder_name = build_folder_name(index, stk_entry, cam_entry, name)
     roll_root = build_roll_structure(LIBRARY_PATH, folder_name)
@@ -226,7 +277,7 @@ def main():
         print('No RAW files found in 01_scans yet -- metadata template will have no rows. '
               'Re-run newRoll.py\'s build_metadata_template() later once scans are copied in.')
 
-    metadata_path = build_metadata_template(roll_root, folder_name, raw_files, stk_entry, cam_entry)
+    metadata_path = build_metadata_template(roll_root, folder_name, raw_files, stk_entry, cam_entry, lab_name)
 
     print(f'\nRoll {str(index).zfill(3)} ready:')
     print(f'  folder:   {roll_root}')

@@ -623,10 +623,23 @@ class metadataTool:
 
             record = self.data[idx]
 
-            self.run_metadata(record)
+            # Shared/roll-wide nlp fields were already stripped out of every record by
+            # strip_shared_nlp_fields() (and already applied once via
+            # apply_shared_nlp_metadata()). If nothing unique is left for this image,
+            # skip the whole click-through-every-field-and-tab sequence in run_metadata()
+            # -- that's the per-image cost that was slowing this down for fields that are
+            # roll-wide statics anyway. Still call finish_image() so the filmstrip
+            # position advances and stays in sync with self.data.
+            nlp_block = record.get("nlp", {})
+            has_unique_data = any(v not in (None, "") for v in nlp_block.values())
 
-            if self.stop_flag:
-                break
+            if has_unique_data:
+                self.run_metadata(record)
+
+                if self.stop_flag:
+                    break
+            else:
+                db.d(f"Skip image {idx + 1}/{len(self.data)}: no unique (non-shared) metadata")
 
             self.finish_image()
 
