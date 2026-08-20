@@ -17,6 +17,7 @@ from typing import Iterable, Union
 from exposureObj import exposureObj
 from collections import Counter
 from debuggerTool import debuggerTool
+from renderTool import FORMATS
 from time import time
 
 DEBUG = 0
@@ -67,6 +68,8 @@ class rollObj:
         self.isNegative = None
         self.isSlide = None
         self.isTrichrome = None
+        self.fontPath = None                        # Font path for contact sheet rendering, cast from stock info (placeholder-safe: was previously only ever set on a stocklist match, causing AttributeError downstream otherwise)
+        self.fontColor = None                       # Font color for contact sheet rendering, cast from stock info (placeholder-safe, see above)
 
         # Roll attributes
         self.process = None                         # Film development process (C41, E6, BNW), cast from stock info
@@ -156,9 +159,19 @@ class rollObj:
     def generate_title(self):
         locations_str  = '+'.join(self.locations) if self.locations else 'Unknown'
         index = self.index_str
-        date = self.startDate
-        title = f"{index}_{date.strftime('%y')}-{date.strftime('%m')}-{self.endDate.strftime('%m')}_{self.stk}_{self.cam}_{locations_str}"
+        date_str = self.build_date_str()
+        stk = self.stk or 'STK'
+        cam = self.cam or 'CAM'
+        title = f"{index}_{date_str}_{stk}_{cam}_{locations_str}"
         self.title = title
+
+    # Builds the {YY-MMs-MMe} date segment used in roll titles/folder names.
+    # Falls back to '??-??-??' when start/end dates are unavailable (eg. missing EXIF)
+    # instead of crashing on NoneType.strftime().
+    def build_date_str(self):
+        if self.startDate is None or self.endDate is None:
+            return '??-??-??'
+        return f"{self.startDate.strftime('%y')}-{self.startDate.strftime('%m')}-{self.endDate.strftime('%m')}"
 
     def find_image_dirs(self):
         # search new structure
@@ -800,9 +813,22 @@ class rollObj:
                 stkFound = True
 
         if not stkFound:
-            db.w(self.dbIdx, f"stk not found in stocklist:", f'"{key}"')
+            db.w(self.dbIdx, f"stk not found in stocklist, using placeholder:", f'"{key}" --> "STK"')
+            # Placeholder fallback: previously this left every one of these fields as None,
+            # which either printed a literal "None" into folder/file names, or crashed later
+            # (self.fontPath/self.fontColor were never even initialized on a miss).
+            self.manufacturer = self.manufacturer or 'Unknown'
+            self.stock = 'STK'
+            self.stk = 'STK'
+            self.isColor = False
+            self.isBlackAndWhite = False
+            self.isInfrared = False
+            self.isNegative = False
+            self.isSlide = False
+            self.fontPath = self.fontPath or 'fonts/JMH Typewriter mono Bold.ttf'
+            self.fontColor = self.fontColor or (0, 0, 0, 255)
 
-        # Cast metadata back to all images (if no STK found, casts None and throws warning)
+        # Cast metadata back to all images (if no STK found, casts placeholder values instead of None)
         for image in self.images_all:
             image.stock = self.stock
             image.boxspeed = self.boxspeed
@@ -821,7 +847,11 @@ class rollObj:
         # Cast date attributes
         self.startDate = self.images[0].dateExposed
         self.endDate = self.images[-1].dateExposed
-        self.duration = (self.endDate - self.startDate).days + 1
+        if self.startDate is None or self.endDate is None:
+            db.w(self.dbIdx, 'dateExposed missing on roll (bad/missing EXIF); duration left unresolved')
+            self.duration = None
+        else:
+            self.duration = (self.endDate - self.startDate).days + 1
         
         # Cast file data attributes
         self.sizeAll = 0
@@ -927,6 +957,54 @@ class rollObj:
 
             if not camfound:
                 db.e(self.dbIdx, "Cam not in cameralist:", f"({brand_raw}, {model_raw})")
+
+        # -------- Placeholder fallback for unresolved camera/format --------
+        # Previously an unmatched camera left img.cam / img.filmformat as None, which either
+        # printed "None" into filenames or crashed the contact-sheet renderer outright
+        # (FORMATS[None] KeyError). Resolve it once per roll instead.
+        unresolved = [img for img in self.images_all if img.cam is None or img.filmformat is None]
+        if unresolved:
+            fallback_format = self.resolve_filmformat_interactively()
+            fallback_filmtype = FORMATS.get(fallback_format, {}).get('filmformat')
+
+            for img in unresolved:
+                if img.cam is None:
+                    img.cam = 'CAM'
+                if img.filmformat is None:
+                    img.filmformat = fallback_format
+                if img.filmtype is None:
+                    img.filmtype = fallback_filmtype
+
+            if self.cam is None:
+                self.cam = 'CAM'
+            if self.filmformat is None:
+                self.filmformat = fallback_format
+                self.filmtype = fallback_filmtype
+
+    # Interactively resolve a filmformat when camera lookup fails, so the contact-sheet
+    # renderer never crashes on FORMATS[None]. Falls back to '135' automatically when not
+    # running interactively (eg. batch/headless imports via main.py's import_rolls('all')).
+    def resolve_filmformat_interactively(self):
+        choices = [k for k in FORMATS.keys() if k != 'custom']
+
+        if not sys.stdin.isatty():
+            db.w(self.dbIdx, 'Non-interactive session: defaulting unresolved filmformat to 135')
+            return '135'
+
+        print(f'\n[{self.index_str}] Camera not found in cameralist.xlsx, so its film format is unknown.')
+        print(f'[{self.index_str}] Select a film format for this roll (used for contact sheet geometry):')
+        for i, key in enumerate(choices, start=1):
+            print(f'    {i}) {key}')
+
+        while True:
+            raw = input(f'[{self.index_str}] Format # (blank = 135): ').strip()
+            if raw == '':
+                return '135'
+            if raw.isdigit() and 1 <= int(raw) <= len(choices):
+                return choices[int(raw) - 1]
+            if raw in choices:
+                return raw
+            print('Not a valid choice, try again.')
 
     # filter images by rating
     def filter_by_rating(self, stars, logic, include_copies=False):
@@ -1252,7 +1330,10 @@ class rollObj:
     def update_name(self):
         # generate cleaned name based on template: {index}_{startDate}-{endDate}_{stock}_{cam}_{locations}
         locations_str  = '+'.join(self.locations) if self.locations else 'Unknown'
-        roll_folder_name = f"{self.index_str}_{self.startDate.strftime('%y')}-{self.startDate.strftime('%m')}-{self.endDate.strftime('%m')}_{self.stk}_{self.cam}_{locations_str}"
+        date_str = self.build_date_str()
+        stk = self.stk or 'STK'
+        cam = self.cam or 'CAM'
+        roll_folder_name = f"{self.index_str}_{date_str}_{stk}_{cam}_{locations_str}"
         self.newName = roll_folder_name
 
 

@@ -673,14 +673,19 @@ class exposureObj:
         roll_index = str(self.roll.index).zfill(3)
         date = self.dateExposed
         index = self.index
-        stk = self.stk
-        cam = self.cam
-        lns = self.lns
+        # Placeholder fallbacks so a missing field prints eg. "CAM"/"???" into the filename
+        # instead of a literal "None", or (for the fields resolved earlier by rollObj) as a
+        # defense-in-depth in case this exposure was somehow not covered by that pass.
+        stk = self.stk or 'STK'
+        cam = self.cam or 'CAM'
+        lns = self.lns or 'LNS'
         location = self.location
         if location is None:
             location = self.state
             if location is None:
                 location = self.country
+        if location is None:
+            location = '???'
         rating = self.rating
 
         date_str = date.strftime('%y%m%d') if date is not None else '??????'

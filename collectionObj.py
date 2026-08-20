@@ -583,7 +583,26 @@ class collectionObj:
         new_roll.process_roll()
         self.rolls.append(new_roll)
         return
-    
+
+    # Imports a single roll directly from its folder path, bypassing self.paths_rolls /
+    # build_directory_tree(). Used for single-roll workflows (eg. cleanRoll.py) where the
+    # user picks one roll folder instead of scanning+indexing the whole library.
+    def import_roll_from_path(self, path):
+        path = os.path.normpath(path)
+        db.i(self.dbIdx, f'Importing roll from path:', path)
+
+        if not os.path.isdir(path):
+            db.e(self.dbIdx, 'Roll path does not exist:', path)
+            return None
+
+        new_roll = rollObj(directory=path, collection=self)
+        if not new_roll.preprocess_roll():
+            db.e(self.dbIdx, 'Failed to preprocess roll at path:', path)
+            return None
+        new_roll.process_roll()
+        self.rolls.append(new_roll)
+        return new_roll
+
     # Identifies collection directory and builds a directory tree
     def build_directory_tree(self):
         path_library = self.directory # typically /.../photography/film/library/
