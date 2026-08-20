@@ -25,6 +25,7 @@ import os
 import subprocess
 from datetime import datetime
 
+import pandas as pd
 from openpyxl import Workbook
 
 import collectionObj
@@ -109,32 +110,83 @@ def prompt_stock(collection):
             print(f'"{raw}" not found in stocklist.xlsx. Add it there first, or check spelling.')
 
 
-def build_camera_index(cameralist):
-    index = {}
-    for entry in cameralist.values():
-        candidates = (entry.get('id'), entry.get('model'), f"{entry.get('brand', '')} {entry.get('model', '')}".strip())
-        for key in candidates:
-            if key:
-                index[key.strip().lower()] = entry
-    return index
+def load_camera_rows():
+    """Reads cameralist.xlsx rows directly, instead of going through
+    collectionObj.build_cameralist()'s dict. That dict is keyed by id/model/"brand model"
+    with a plain assignment per row, so when multiple distinct camera bodies share the
+    same model name (eg. three "F3"s with ids F3/F3S/F3'), each later row silently
+    overwrites the earlier one under the shared 'model' key -- whichever row happens to
+    be listed last in the sheet wins, with no way to tell from the result. Reading the
+    raw rows here lets prompt_camera() detect that ambiguity and ask, instead of
+    guessing."""
+    project_dir = os.path.dirname(os.path.abspath(collectionObj.__file__))
+    xlsx_path = os.path.join(project_dir, 'data', 'cameralist.xlsx')
+    df = pd.read_excel(xlsx_path, dtype=str, engine='openpyxl').fillna('')
+
+    rows = []
+    for _, row in df.iterrows():
+        cam_id = row['id'].strip()
+        if not cam_id:
+            continue
+        rows.append({
+            'id': cam_id,
+            'model': row['model'].strip(),
+            'brand': row['brand'].strip(),
+            'serial': row['serial'].strip(),
+            'filmtype': row['filmtype'].strip(),
+            'filmformat': row['filmformat'].strip(),
+        })
+    return rows
 
 
-def prompt_camera(collection):
-    index = build_camera_index(collection.cameralist)
+def prompt_camera():
+    rows = load_camera_rows()
+
     while True:
         raw = input('Camera (ID / model / "brand model"): ').strip()
         if not raw:
             print('Camera is required.')
             continue
-        entry = index.get(raw.lower())
-        if entry:
-            return entry
-        matches = [v for k, v in index.items() if raw.lower() in k]
-        if matches:
-            names = sorted({f"{m['brand']} {m['model']}".strip() for m in matches})
-            print(f'No exact match in cameralist.xlsx. Did you mean: {", ".join(names)}')
-        else:
-            print(f'"{raw}" not found in cameralist.xlsx. Add it there first, or check spelling.')
+
+        key = raw.lower()
+        matches = [
+            r for r in rows
+            if key in (r['id'].lower(), r['model'].lower(), f"{r['brand']} {r['model']}".strip().lower())
+        ]
+
+        if not matches:
+            loose = [r for r in rows if key in r['model'].lower() or key in r['id'].lower()]
+            if loose:
+                names = sorted({f"{r['brand']} {r['model']} (id={r['id']})" for r in loose})
+                print(f'No exact match in cameralist.xlsx. Did you mean: {", ".join(names)}')
+            else:
+                print(f'"{raw}" not found in cameralist.xlsx. Add it there first, or check spelling.')
+            continue
+
+        # Collapse true duplicate rows (identical id/model/brand/filmtype -- harmless
+        # repeated lines in the sheet) before checking for genuine ambiguity.
+        unique = {}
+        for r in matches:
+            unique[(r['id'], r['model'], r['brand'], r['filmtype'])] = r
+        matches = list(unique.values())
+
+        if len(matches) == 1:
+            return matches[0]
+
+        # Genuinely ambiguous: the typed name matches more than one distinct camera body
+        # (eg. several "F3"s with different ids/serials). Force a pick instead of
+        # silently taking whichever row cameralist.xlsx happens to list last -- this is
+        # exactly the bug that produced an unexpected "F3S" for a typed "F3".
+        print(f'"{raw}" matches {len(matches)} cameras in cameralist.xlsx -- pick one:')
+        for i, r in enumerate(matches, start=1):
+            serial = f", serial={r['serial']}" if r['serial'] else ''
+            print(f"  {i}) id={r['id']:<10} {r['brand']} {r['model']}  ({r['filmtype']}/{r['filmformat']}{serial})")
+
+        while True:
+            pick = input('Number: ').strip()
+            if pick.isdigit() and 1 <= int(pick) <= len(matches):
+                return matches[int(pick) - 1]
+            print('Not a valid choice, try again.')
 
 
 def prompt_name():
@@ -257,7 +309,7 @@ def main():
     index = prompt_index(next_idx)
 
     stk_entry = prompt_stock(collection)
-    cam_entry = prompt_camera(collection)
+    cam_entry = prompt_camera()
     name = prompt_name()
     lab_name = prompt_lab_name()
 
