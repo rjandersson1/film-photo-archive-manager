@@ -30,6 +30,11 @@ SCAN_METHOD_POS = (2410, 835)
 PUSH_PULL_POS = (2402, 979)
 DEVELOPED_AT_POS = (2401, 992)
 
+# Camera IDs (cameralist.xlsx's 'id' column) that don't have interchangeable
+# lenses -- CAM+LNS combining in Intellectual Genre doesn't make sense for
+# these, since there's only ever one lens. Add more IDs here as needed.
+FIXED_LENS_CAMERA_IDS = {"RF3.5B"}
+
 # Dropdown fields open with whatever value they currently hold highlighted, not
 # always the first entry -- and that value can be blank/empty, which previously
 # broke selection outright (a down-count computed for "starts at entry 1" lands
@@ -359,7 +364,7 @@ class metadataTool:
             # that logic is already validated against real EXIF LensModel
             # strings across the whole archive.
             lens_info = self._parse_lens_info(lens_model)
-            if lens_info and intellectual_genre != 'RF3.5B':
+            if lens_info and intellectual_genre not in FIXED_LENS_CAMERA_IDS:
                 # Idempotency guard: if this row's already been run through
                 # this pass before, Intellectual Genre already ends with (or,
                 # if it started blank, already equals) the expected lens
