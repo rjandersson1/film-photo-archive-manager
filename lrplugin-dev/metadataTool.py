@@ -359,7 +359,7 @@ class metadataTool:
             # that logic is already validated against real EXIF LensModel
             # strings across the whole archive.
             lens_info = self._parse_lens_info(lens_model)
-            if lens_info:
+            if lens_info and intellectual_genre != 'RF3.5B':
                 # Idempotency guard: if this row's already been run through
                 # this pass before, Intellectual Genre already ends with (or,
                 # if it started blank, already equals) the expected lens
