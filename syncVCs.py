@@ -45,12 +45,15 @@
 #   python syncVCs.py
 
 import time
+import re
 import subprocess
 import threading
 
 from pathlib import Path
 from pynput import keyboard
 from pynput.keyboard import Controller, Key
+
+import pyperclip
 
 
 class db:
@@ -66,7 +69,7 @@ MANIFEST_PATH = SCRIPT_DIR / "lrplugin-dev" / "vc_manifest.txt"
 # manifest, for a safe first test run. None processes everything.
 TEST_LIMIT = None
 
-DELAY_CONST = 0.3
+DELAY_CONST = 0.05
 
 DELAY_DEFAULT = DELAY_CONST + 0.05
 DELAY_KEYPRESS = DELAY_CONST + 0.02
@@ -78,6 +81,20 @@ SYNC_DIALOG_DELAY = DELAY_CONST + 0.5
 # run. If Enter fires before the dialog's up, it'll do nothing useful and
 # the next stack's selection will be wrong. Increase this first if stacks
 # start getting skipped/miscounted partway through a run.
+# Same caveat, for the Rename Photo dialog instead.
+RENAME_DIALOG_DELAY = DELAY_CONST + 0.5
+
+# "-positive" -> "_positive" only, preserving any "-N" suffix ("-positive-2"
+# stays distinct from "-positive") -- chosen over renaming to match the raw
+# file's own name: that risks a real filename collision, and even avoiding
+# that, loses the "this is an NLP derivative, and which one" information the
+# current name already carries.
+POSITIVE_RENAME_RE = re.compile(r'-positive', re.IGNORECASE)
+
+
+def build_renamed_stem(filename):
+    stem = Path(filename).stem
+    return POSITIVE_RENAME_RE.sub('_positive', stem, count=1)
 
 
 class SyncVCs:
@@ -193,6 +210,120 @@ class SyncVCs:
 
         return True
 
+    def paste_text(self, text):
+        pyperclip.copy(str(text))
+        time.sleep(DELAY_DEFAULT)
+        self.hotkey("cmd", "v")
+        time.sleep(DELAY_DEFAULT)
+
+    def trigger_rename_photo(self):
+        # Confirmed menu path: Library > Rename Photo... -- opens with
+        # "File Naming: Custom Name" already selected (constant between
+        # invocations per confirmed behavior) and the "Custom Text" field
+        # already focused and its content pre-selected, so pasting replaces
+        # it directly without needing to select-all first.
+        script = '''
+        tell application "Adobe Lightroom Classic" to activate
+        delay 0.2
+        tell application "System Events"
+            tell process "Adobe Lightroom Classic"
+                click menu bar item "Library" of menu bar 1
+                delay 0.2
+                click menu item "Rename Photo..." of menu 1 of menu bar item "Library" of menu bar 1
+                delay 0.2
+            end tell
+        end tell
+        '''
+
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print("=" * 70)
+            print("ERROR: Rename Photo menu click failed.")
+            print(result.stderr.strip())
+            print("=" * 70)
+            self.stop_flag = True
+            return False
+
+        return True
+
+    def rename_positive(self, filename):
+
+        new_stem = build_renamed_stem(filename)
+        new_name = new_stem + Path(filename).suffix
+
+        db.d(f"{filename}: renaming to {new_name}")
+
+        if not self.trigger_rename_photo():
+            return False
+
+        time.sleep(RENAME_DIALOG_DELAY)
+
+        self.paste_text(new_stem)
+        time.sleep(DELAY_DEFAULT)
+
+        self.press("enter")
+        time.sleep(0.3)
+
+        return True
+
+    def rename_pass(self, warnings):
+        # Renames every flagged "-positive[...].tif" file through Lightroom's
+        # own Rename Photo dialog (not a raw filesystem rename), so the
+        # catalog stays linked to the file automatically -- no manual
+        # relocate/relink step needed afterward.
+        #
+        # Walks forward from the FIRST photo in Quick Collection using plain
+        # Right-arrow presses, one at a time, tracking position against each
+        # warning's 0-based on-screen offset from Importer.lua -- this is
+        # the only way to reach an arbitrary photo with no "select by
+        # filename" capability available.
+
+        ordered = sorted(warnings, key=lambda w: w[1])
+
+        print(f"\n{len(ordered)} file(s) need renaming before syncing can proceed:")
+        for fname, _ in ordered:
+            new_stem = build_renamed_stem(fname)
+            new_name = new_stem + Path(fname).suffix
+            print(f"  {fname}  ->  {new_name}")
+
+        confirm = input("\nRename these now through Lightroom? [y/N] ").strip().lower()
+
+        if confirm != "y":
+            print("\nNot renaming. Rename these manually (Library > Rename Photo...),")
+            print("then re-run the JSON Import to regenerate a clean manifest, then")
+            print("run this script again.")
+            return False
+
+        self.activate_lightroom()
+        self.ensure_library_module()
+
+        current_pos = 0
+
+        for fname, target_pos in ordered:
+
+            if self.stop_flag:
+                return False
+
+            steps = target_pos - current_pos
+            for _ in range(steps):
+                self.press("right")
+                time.sleep(DELAY_DEFAULT)
+            current_pos = target_pos
+
+            if not self.rename_positive(fname):
+                return False
+
+        print(f"\nRenamed {len(ordered)} file(s).")
+        print("Re-run the JSON Import (metadataTool.py) to regenerate a clean")
+        print("manifest, then run this script again to sync.")
+
+        return True
+
     def read_manifest(self):
 
         if not MANIFEST_PATH.exists():
@@ -206,15 +337,22 @@ class SyncVCs:
         print(f"Manifest last written {age_min:.1f} minutes ago.")
 
         entries = []
+        warnings = []
 
         for line in MANIFEST_PATH.read_text().splitlines():
             line = line.strip()
             if not line:
                 continue
-            fname, count_str = line.rsplit("\t", 1)
-            entries.append((fname, int(count_str)))
+            parts = line.split("\t")
+            if parts[0] == "WARNING":
+                # WARNING\t<filename>\t<0-based on-screen position>
+                fname, pos_str = parts[1], parts[2]
+                warnings.append((fname, int(pos_str)))
+            else:
+                fname, count_str = parts[0], parts[1]
+                entries.append((fname, int(count_str)))
 
-        return entries
+        return entries, warnings
 
     def sync_stack(self, fname, copy_count):
 
@@ -238,7 +376,16 @@ class SyncVCs:
 
     def run(self):
 
-        entries = self.read_manifest()
+        entries, warnings = self.read_manifest()
+        print(f"\nManifest read: {len(entries)} stack(s), {len(warnings)} warning(s).")
+
+        if warnings:
+            print("\nWARNING: some files need renaming before syncing can proceed.")
+            self.rename_pass(warnings)
+            print("\nManifest is now stale after renaming -- re-run the JSON Import to rebuild it, then run this script again.")
+            # Always stop here, renamed or not -- the manifest was built
+            # against the OLD filenames/order and is now stale either way.
+            return
 
         if TEST_LIMIT is not None:
             entries = entries[:TEST_LIMIT]

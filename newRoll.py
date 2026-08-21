@@ -44,7 +44,27 @@ RAW_EXTS = ('.arw', '.dng', '.tif', '.tiff')
 # stack companion of an already-counted exposure, not its own -- list_raw_files()
 # skips anything matching this pattern so it never gets counted as, or given,
 # its own xlsx row.
-NLP_POSITIVE_TIFF_RE = re.compile(r'-positive\.tiff?$', re.IGNORECASE)
+# Negative Lab Pro's "Create Positive .tiff" + "Stack with Original" option
+# writes a "{base}-positive.tif" file into the same 01_scans folder as the
+# raw capture it was generated from, stacked with it in Lightroom. It's a
+# stack companion of an already-counted exposure, not its own -- list_raw_files()
+# skips anything matching this pattern so it never gets counted as, or given,
+# its own xlsx row.
+#
+# Matches BOTH "-positive" and "_positive": "-" sorts before "." in any
+# filename-sorted view (eg. Quick Collection sorted by filename), which puts
+# "{base}-positive.tif" BEFORE its own master's "{base}.ARW" -- breaking
+# syncVCs.py's assumption that the master is always visually first in its
+# stack. Renaming to "_positive.tif" (underscore sorts after ".") fixes
+# that; matching both here means this keeps working whether a given file
+# has been renamed yet or not.
+#
+# Also matches an optional "-N" suffix ("-positive-2.tif", "-positive-3.tif",
+# ...) -- NLP can generate more than one positive per raw capture, and each
+# additional one gets a numbered suffix (confirmed against real data:
+# "DSC00002-positive.tif" + "DSC00002-positive-2.tif" both existing for the
+# same raw).
+NLP_POSITIVE_TIFF_RE = re.compile(r'[-_]positive(-\d+)?\.tiff?$', re.IGNORECASE)
 
 # Roll-wide metadata defaults, hardcoded per your fixed workflow. Edit these if your
 # gear/lab setup changes.

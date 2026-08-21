@@ -243,26 +243,49 @@ function Importer.run()
 
     end)
 
-    -- TEST: writes an ordered manifest for a future syncVCs.py -- for each
-    -- on-screen stack top (stackPositionInFolder == 1, or nil if not
-    -- stacked at all), how many more Shift+Right presses would select every
-    -- other member of that stack. Uses Lightroom's own stack structure
-    -- directly (stackPositionInFolder / countStackInFolderMembers, both
-    -- documented getRawMetadata keys) rather than our JSON-derived VC/
-    -- companion matching -- this reflects on-screen grouping regardless of
-    -- whether a member is a true virtual copy or a real stacked file like
+    -- Detects NLP's "-positive.tif" (or "-positive-2.tif" etc. -- NLP can
+    -- generate more than one positive per raw capture) companions that
+    -- haven't been renamed to "_positive.tif" yet. "-" sorts before "." in
+    -- any filename-sorted view (eg. Quick Collection sorted by filename),
+    -- so an unrenamed file like this appears BEFORE its own master's
+    -- ".ARW" filename on screen -- breaking syncVCs.py's assumption that
+    -- the master is always visually first in its stack. Renaming to
+    -- "_positive.tif"/"_positive-2.tif" (underscore sorts after ".") fixes
+    -- this at the source; this just flags any still needing it, matched
+    -- case-insensitively via a lowered path.
+    local function isUnrenamedPositiveTiff(path)
+        if not path then return false end
+        local lowered = path:lower()
+        return lowered:match("%-positive%-?%d*%.tiff?$") ~= nil
+    end
+
+    -- Writes an ordered manifest for syncVCs.py -- for each on-screen stack
+    -- top (stackPositionInFolder == 1, or nil if not stacked at all), how
+    -- many more Shift+Right presses would select every other member of
+    -- that stack. Uses Lightroom's own stack structure directly
+    -- (stackPositionInFolder / countStackInFolderMembers, both documented
+    -- getRawMetadata keys) rather than our JSON-derived VC/companion
+    -- matching -- this reflects on-screen grouping regardless of whether a
+    -- member is a true virtual copy or a real stacked file like
     -- "-positive.tif", which is exactly what on-screen navigation needs.
-    --
-    -- Pre-create this file empty before triggering this script if you want
-    -- to test whether Lightroom's process can WRITE to it -- an earlier,
-    -- unrelated signal-file attempt found that Lightroom's process appeared
-    -- unable to CREATE a brand-new file in this folder, only write to an
-    -- existing one; this line alone will tell us whether that same
-    -- limitation applies here.
     local manifestPath = "/Users/rja/Documents/Coding/film-photo-archive-manager/lrplugin-dev/vc_manifest.txt"
     local manifestFile, manifestErr = io.open(manifestPath, "w")
 
     if manifestFile then
+        -- WARNING lines first -- syncVCs.py's rename pre-pass reads these
+        -- (and the sync pass refuses to run at all while any exist).
+        -- Position is 0-based, on-screen offset from the FIRST photo in
+        -- selectedPhotos -- how many plain Right-arrow presses from the
+        -- start land on this exact photo, so the rename pre-pass can find
+        -- it without any "select by filename" capability.
+        for idx, p in ipairs(selectedPhotos) do
+            local path = p:getRawMetadata("path")
+            if isUnrenamedPositiveTiff(path) then
+                local fname = p:getFormattedMetadata("fileName") or path
+                manifestFile:write("WARNING\t" .. fname .. "\t" .. tostring(idx - 1) .. "\n")
+            end
+        end
+
         for _, p in ipairs(selectedPhotos) do
             local pos = p:getRawMetadata("stackPositionInFolder")
             if pos == nil or pos == 1 then

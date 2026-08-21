@@ -885,7 +885,7 @@ class metadataTool:
             return
 
         print(f"Starting in {self.delay_start:.1f}s...")
-        time.sleep(self.delay_start)
+        time.sleep(self.delay_start*2)
 
         idx = 0
 
