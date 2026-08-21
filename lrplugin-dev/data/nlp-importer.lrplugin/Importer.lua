@@ -81,24 +81,25 @@ local function applyMetadata(photo, record)
 end
 
 
--- Finds masterPhoto's virtual copies: any other photo in the same folder
--- whose file path matches masterPhoto's exactly (VCs share the master's
--- underlying file -- they don't have their own path) and that is flagged
--- isVirtualCopy. Scoped to the master's own folder rather than the whole
--- catalog -- a VC always lives in the same folder as its master, and this
--- keeps the scan small regardless of catalog size.
-local function getVirtualCopiesOf(masterPhoto)
+-- Finds masterPhoto's virtual copies: any other photo in the catalog whose
+-- file path matches masterPhoto's exactly (VCs share the master's underlying
+-- file -- they don't have their own path) and that is flagged isVirtualCopy.
+-- "path" and "isVirtualCopy" are both documented getRawMetadata keys; an
+-- earlier version of this tried getRawMetadata("folder"), which isn't a real
+-- key and crashed Lightroom with "Unknown key: folder" -- allPhotos is built
+-- once by the caller and passed in, rather than each master re-scanning the
+-- whole catalog itself.
+local function getVirtualCopiesOf(masterPhoto, allPhotos)
 
     local masterPath = masterPhoto:getRawMetadata("path")
-    local folder = masterPhoto:getRawMetadata("folder")
 
-    if not masterPath or not folder then
+    if not masterPath then
         return {}
     end
 
     local copies = {}
 
-    for _, candidate in ipairs(folder:getPhotos()) do
+    for _, candidate in ipairs(allPhotos) do
         if candidate ~= masterPhoto
             and candidate:getRawMetadata("path") == masterPath
             and candidate:getRawMetadata("isVirtualCopy") then
@@ -137,6 +138,7 @@ function Importer.run()
     end
 
     local photoIndex = buildPhotoIndex(selectedPhotos)
+    local allPhotos = catalog:getAllPhotos()
 
     local matched = 0
     local missing = 0
@@ -156,7 +158,7 @@ function Importer.run()
                     applyMetadata(photo, record)
                     matched = matched + 1
 
-                    for _, vc in ipairs(getVirtualCopiesOf(photo)) do
+                    for _, vc in ipairs(getVirtualCopiesOf(photo, allPhotos)) do
                         applyMetadata(vc, record)
                         vcSynced = vcSynced + 1
                     end
