@@ -81,15 +81,37 @@ local function applyMetadata(photo, record)
 end
 
 
--- Finds masterPhoto's virtual copies: any other photo in the catalog whose
--- file path matches masterPhoto's exactly (VCs share the master's underlying
--- file -- they don't have their own path) and that is flagged isVirtualCopy.
--- "path" and "isVirtualCopy" are both documented getRawMetadata keys; an
--- earlier version of this tried getRawMetadata("folder"), which isn't a real
--- key and crashed Lightroom with "Unknown key: folder" -- allPhotos is built
--- once by the caller and passed in, rather than each master re-scanning the
--- whole catalog itself.
-local function getVirtualCopiesOf(masterPhoto, allPhotos)
+-- Builds a path -> {VC photos} index in ONE pass over the whole catalog,
+-- instead of re-scanning it for every matched master. The previous version
+-- called getRawMetadata() on every catalog photo for EVERY matched master
+-- (O(masters x catalog size)) -- as the catalog has grown across rolls, that
+-- got dramatically slower. This is O(catalog size) total, regardless of how
+-- many masters are being processed.
+local function buildVirtualCopyIndex(allPhotos)
+
+    local index = {}
+
+    for _, photo in ipairs(allPhotos) do
+        if photo:getRawMetadata("isVirtualCopy") then
+            local path = photo:getRawMetadata("path")
+            if path then
+                if not index[path] then
+                    index[path] = {}
+                end
+                table.insert(index[path], photo)
+            end
+        end
+    end
+
+    return index
+
+end
+
+
+-- Looks up masterPhoto's virtual copies via the index above -- VCs share the
+-- master's underlying file path (they don't have their own), so this is a
+-- direct O(1) lookup rather than a scan.
+local function getVirtualCopiesOf(masterPhoto, vcIndex)
 
     local masterPath = masterPhoto:getRawMetadata("path")
 
@@ -97,17 +119,7 @@ local function getVirtualCopiesOf(masterPhoto, allPhotos)
         return {}
     end
 
-    local copies = {}
-
-    for _, candidate in ipairs(allPhotos) do
-        if candidate ~= masterPhoto
-            and candidate:getRawMetadata("path") == masterPath
-            and candidate:getRawMetadata("isVirtualCopy") then
-            table.insert(copies, candidate)
-        end
-    end
-
-    return copies
+    return vcIndex[masterPath] or {}
 
 end
 
@@ -139,6 +151,7 @@ function Importer.run()
 
     local photoIndex = buildPhotoIndex(selectedPhotos)
     local allPhotos = catalog:getAllPhotos()
+    local vcIndex = buildVirtualCopyIndex(allPhotos)
 
     local matched = 0
     local missing = 0
@@ -158,7 +171,7 @@ function Importer.run()
                     applyMetadata(photo, record)
                     matched = matched + 1
 
-                    for _, vc in ipairs(getVirtualCopiesOf(photo, allPhotos)) do
+                    for _, vc in ipairs(getVirtualCopiesOf(photo, vcIndex)) do
                         applyMetadata(vc, record)
                         vcSynced = vcSynced + 1
                     end

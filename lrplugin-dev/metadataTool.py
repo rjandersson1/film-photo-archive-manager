@@ -59,6 +59,11 @@ class metadataTool:
         self.delay_start = 0.2
 
         self.accept_event = threading.Event()
+        # Separate from accept_event -- apply_lrplugin() waits for an actual
+        # Enter press (which also dismisses Lightroom's completion dialog,
+        # since Enter activates its default OK button), not the "." key used
+        # for calibration capture elsewhere.
+        self.enter_event = threading.Event()
         self.stop_flag = False
 
         self.acceptButton = "."
@@ -474,7 +479,17 @@ class metadataTool:
     def _on_press(self, key):
 
         if key == keyboard.Key.esc and not self.ignore_esc:
+            if not self.stop_flag:
+                # Every stage checks stop_flag and returns silently once it's
+                # set -- without this print, an ESC press (accidental, or a
+                # reaction to what looked like a freeze) makes the whole
+                # script just vanish with zero explanation, indistinguishable
+                # from an actual crash.
+                print("\nESC pressed -- stopping.\n")
             self.stop_flag = True
+
+        if key == keyboard.Key.enter:
+            self.enter_event.set()
 
         if hasattr(key, "char") and key.char == self.acceptButton:
             self.accept_event.set()
@@ -718,10 +733,27 @@ class metadataTool:
             self.stop_flag = True
             return
 
-        time.sleep(1.0)
+        # Runtime here varies (the Lua-side virtual-copy sync scans the whole
+        # catalog once per run), so a fixed delay before dismissing the
+        # completion dialog isn't reliable, and a file-based "done" signal
+        # turned out to be too, for reasons that were never fully pinned
+        # down (Lightroom's process silently failed to create a new file in
+        # this folder, even though it can read/write existing ones there --
+        # see git history if that's ever worth revisiting). Simplest robust
+        # option: wait for you to actually press Enter. The same keypress
+        # both dismisses Lightroom's dialog (Enter activates its default OK
+        # button, since Lightroom is frontmost) and signals this script to
+        # continue -- one physical action, no synthetic Enter sent
+        # afterward, no guessing about timing.
+        print("Waiting for you to press Enter once the 'Import complete' dialog is up...")
 
-        # deselect again
-        self.hotkey("enter")
+        self.enter_event.clear()
+
+        while not self.enter_event.is_set():
+            if self.stop_flag:
+                return
+            time.sleep(0.01)
+
         self.hotkey("cmd", "d")
         self.press("left")
 
