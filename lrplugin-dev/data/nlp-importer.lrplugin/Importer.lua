@@ -243,9 +243,51 @@ function Importer.run()
 
     end)
 
+    -- TEST: writes an ordered manifest for a future syncVCs.py -- for each
+    -- on-screen stack top (stackPositionInFolder == 1, or nil if not
+    -- stacked at all), how many more Shift+Right presses would select every
+    -- other member of that stack. Uses Lightroom's own stack structure
+    -- directly (stackPositionInFolder / countStackInFolderMembers, both
+    -- documented getRawMetadata keys) rather than our JSON-derived VC/
+    -- companion matching -- this reflects on-screen grouping regardless of
+    -- whether a member is a true virtual copy or a real stacked file like
+    -- "-positive.tif", which is exactly what on-screen navigation needs.
+    --
+    -- Pre-create this file empty before triggering this script if you want
+    -- to test whether Lightroom's process can WRITE to it -- an earlier,
+    -- unrelated signal-file attempt found that Lightroom's process appeared
+    -- unable to CREATE a brand-new file in this folder, only write to an
+    -- existing one; this line alone will tell us whether that same
+    -- limitation applies here.
+    local manifestPath = "/Users/rja/Documents/Coding/film-photo-archive-manager/lrplugin-dev/vc_manifest.txt"
+    local manifestFile, manifestErr = io.open(manifestPath, "w")
+
+    if manifestFile then
+        for _, p in ipairs(selectedPhotos) do
+            local pos = p:getRawMetadata("stackPositionInFolder")
+            if pos == nil or pos == 1 then
+                -- countStackInFolderMembers returns 0 (not nil) for a photo
+                -- that isn't stacked at all -- "0 or 1" never fires here
+                -- since 0 is truthy in Lua (only nil/false are falsy), so
+                -- this used to compute 0 - 1 = -1 for every unstacked photo.
+                -- Confirmed against real data: DSC00008 (5 known VCs)
+                -- computed correctly as 5, proving the formula itself is
+                -- right for genuinely stacked photos -- only the "not
+                -- stacked at all" case was wrong. Clamping to a 0 floor
+                -- fixes both nil and explicit-0 identically.
+                local total = p:getRawMetadata("countStackInFolderMembers") or 0
+                local copyCount = math.max(total - 1, 0)
+                local fname = p:getFormattedMetadata("fileName") or ""
+                manifestFile:write(fname .. "\t" .. tostring(copyCount) .. "\n")
+            end
+        end
+        manifestFile:close()
+    end
+
     LrDialogs.message(
         "Import complete",
-        "Matched: " .. tostring(matched) .. "\nVirtual copies synced: " .. tostring(vcSynced) .. "\nStack companions synced: " .. tostring(stackSynced) .. "\nUnmatched: " .. tostring(missing),
+        "Matched: " .. tostring(matched) .. "\nVirtual copies synced: " .. tostring(vcSynced) .. "\nStack companions synced: " .. tostring(stackSynced) .. "\nUnmatched: " .. tostring(missing)
+            .. (manifestFile == nil and manifestErr and ("\n\nWARNING: vc_manifest.txt write failed:\n" .. tostring(manifestErr)) or ""),
         "info"
     )
 

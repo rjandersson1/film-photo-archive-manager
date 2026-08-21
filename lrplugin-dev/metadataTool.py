@@ -102,6 +102,12 @@ class metadataTool:
         # via .with_suffix('.json')) -- that produces a per-roll path the plugin never
         # looks at, so it silently imports stale/nonexistent data.
         self.json_path = self.script_dir / "metadata.json"
+        # TEST ONLY -- see apply_lrplugin(). Pre-created empty right before
+        # Importer.lua runs, since Lightroom's process appeared unable to
+        # CREATE a brand-new file in this folder earlier (the abandoned
+        # signal-file mechanism), only write to an existing one. This checks
+        # whether that same workaround lets it write a real data manifest.
+        self.vc_manifest_path = self.script_dir / "vc_manifest.txt"
         self.raw_folder = Path(raw_folder) if raw_folder else None
         print(self.xlsx_path)
 
@@ -684,6 +690,11 @@ class metadataTool:
         # selection regardless of its state.
         self.hotkey("cmd", "a")
         time.sleep(0.4)
+
+        # TEST ONLY -- pre-create empty so Importer.lua only ever writes to
+        # (never creates) this path. Delete this line once we know whether
+        # the write actually succeeds.
+        self.vc_manifest_path.write_text("")
 
         # Menu item title/hierarchy: Library > Plug-in Extras > "   JSON Import" (3 leading
         # spaces -- Lightroom renders it indented under an auto-inserted "NLP Importer"
