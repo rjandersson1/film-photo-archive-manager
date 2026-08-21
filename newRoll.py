@@ -22,6 +22,7 @@
 #   python newRoll.py
 
 import os
+import re
 import subprocess
 from datetime import datetime
 
@@ -36,6 +37,14 @@ import collectionObj
 LIBRARY_PATH = r'/Users/rja/Photography/0_Working/1_Imports/'
 
 RAW_EXTS = ('.arw', '.dng', '.tif', '.tiff')
+
+# Negative Lab Pro's "Create Positive .tiff" + "Stack with Original" option
+# writes a "{base}-positive.tif" file into the same 01_scans folder as the
+# raw capture it was generated from, stacked with it in Lightroom. It's a
+# stack companion of an already-counted exposure, not its own -- list_raw_files()
+# skips anything matching this pattern so it never gets counted as, or given,
+# its own xlsx row.
+NLP_POSITIVE_TIFF_RE = re.compile(r'-positive\.tiff?$', re.IGNORECASE)
 
 # Roll-wide metadata defaults, hardcoded per your fixed workflow. Edit these if your
 # gear/lab setup changes.
@@ -254,6 +263,8 @@ def list_raw_files(scans_path):
     files = []
     for name in sorted(os.listdir(scans_path)):
         if name.startswith('.'):
+            continue
+        if NLP_POSITIVE_TIFF_RE.search(name):
             continue
         if name.lower().endswith(RAW_EXTS):
             files.append(name)
