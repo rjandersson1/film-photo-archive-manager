@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 
 # Ignore big/local data trees
-data/
+/data/
 #data/archive/
 #data/filmCollection/
 #data/filmCollectionTestAll/
