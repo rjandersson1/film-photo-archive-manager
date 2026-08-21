@@ -33,7 +33,7 @@ DEVELOPED_AT_POS = (2401, 992)
 # Camera IDs (cameralist.xlsx's 'id' column) that don't have interchangeable
 # lenses -- CAM+LNS combining in Intellectual Genre doesn't make sense for
 # these, since there's only ever one lens. Add more IDs here as needed.
-FIXED_LENS_CAMERA_IDS = {"RF3.5B"}
+FIXED_LENS_CAMERA_IDS = {"RF3.5B", "ZOOM28", "UGO", "ACCZOOM", "PERKEO-II"}
 
 # Dropdown fields open with whatever value they currently hold highlighted, not
 # always the first entry -- and that value can be blank/empty, which previously
