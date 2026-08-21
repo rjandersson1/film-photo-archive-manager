@@ -15,25 +15,27 @@
 # Scope: only ever the CURRENT Quick Collection selection for one roll (up
 # to ~40 photos) -- never catalog-wide.
 #
-# Prerequisites -- all must be true before running this:
-#   1. Run the roll's normal metadataTool.py / JSON Import pass FIRST.
-#      That's what writes lrplugin-dev/vc_manifest.txt, which this script
-#      reads to know exactly how many Shift+Right presses each stack needs.
-#   2. In Lightroom, with the roll's Quick Collection photos selected:
+# Prerequisites -- must be true before running this:
+#   1. In Lightroom, with the roll's Quick Collection photos selected:
 #      Photo > Stacking > Expand All Stacks -- BEFORE adding them to Quick
 #      Collection / before running this script. Sync Metadata only works
 #      correctly on a fully expanded stack selection; a collapsed stack
-#      silently syncs nothing but the top photo.
-#   3. Configure Sync Metadata's checkboxes ONCE, by hand (Metadata > Sync
+#      silently syncs nothing but the top photo. (This also affects the
+#      unrenamed-"-positive.tif" detection below -- it only sees photos
+#      that are actually selected, so a collapsed stack hides its members
+#      from that check too.)
+#   2. Configure Sync Metadata's checkboxes ONCE, by hand (Metadata > Sync
 #      Metadata, tick whatever fields you want synced, eg. just the NLP
 #      fields, then Synchronize). Lightroom remembers this choice between
 #      invocations -- this script never touches the checkboxes itself, and
 #      has no way to verify what's currently checked, so get this right
 #      before running.
-#   4. The FIRST photo in Quick Collection (sorted by filename) is the
-#      currently selected/active photo in Lightroom's filmstrip before you
-#      start -- this script assumes its starting position matches the
-#      manifest's first entry.
+#
+# This script now triggers the JSON Import itself at startup and resets the
+# selection to a known, deterministic state (Cmd+A, Up -- collapses whatever
+# was selected down to just the first photo) before reading the manifest, so
+# it never runs against a stale manifest or an uncertain starting selection
+# regardless of what was left selected beforehand.
 #
 # This hasn't been run end-to-end yet -- test on 1-2 stacks first (edit
 # TEST_LIMIT below) rather than trusting a full ~40-photo roll on the first
@@ -69,7 +71,7 @@ MANIFEST_PATH = SCRIPT_DIR / "lrplugin-dev" / "vc_manifest.txt"
 # manifest, for a safe first test run. None processes everything.
 TEST_LIMIT = None
 
-DELAY_CONST = 0.05
+DELAY_CONST = 0.00
 
 DELAY_DEFAULT = DELAY_CONST + 0.05
 DELAY_KEYPRESS = DELAY_CONST + 0.02
@@ -102,6 +104,13 @@ class SyncVCs:
     def __init__(self):
         self.kb = Controller()
         self.stop_flag = False
+        # Set when a real Enter keypress is detected -- used to wait for the
+        # JSON Import "Import complete" dialog, the same way metadataTool.py
+        # does. NOT a fixed delay: that step's duration genuinely varies
+        # (its virtual-copy sync scans the whole catalog), and a blind delay
+        # here would risk the same silent, unexplained failures a fixed
+        # delay caused there before.
+        self.enter_event = threading.Event()
         self.listener = keyboard.Listener(on_press=self._on_press)
         self.listener.start()
 
@@ -110,12 +119,15 @@ class SyncVCs:
             if not self.stop_flag:
                 print("\nESC pressed -- stopping.\n")
             self.stop_flag = True
+        if key == keyboard.Key.enter:
+            self.enter_event.set()
 
     def press(self, key):
 
         key_map = {
             "left": Key.left,
             "right": Key.right,
+            "up": Key.up,
             "enter": Key.enter,
             "esc": Key.esc,
         }
@@ -175,6 +187,78 @@ class SyncVCs:
         # this script needs only exists in Library.
         self.hotkey("cmd", "alt", "1")
         time.sleep(0.5)
+
+    def reset_selection_to_first(self, select_all_after=False):
+        # Deterministic starting selection regardless of whatever was
+        # selected before: select everything, then Up collapses that down
+        # to just the FIRST photo -- a fixed, known anchor point, rather
+        # than trusting whatever state the filmstrip happened to be left
+        # in. select_all_after=True re-selects everything from that anchor
+        # (used before triggering JSON Import, which needs every photo
+        # selected); False leaves just the first photo selected (what the
+        # sync loop below needs).
+        self.hotkey("cmd", "a")
+        time.sleep(DELAY_DEFAULT)
+
+        self.press("up")
+        time.sleep(DELAY_DEFAULT)
+
+        if select_all_after:
+            self.hotkey("cmd", "a")
+            time.sleep(DELAY_DEFAULT)
+
+    def trigger_json_import(self):
+        # Runs the roll's normal JSON Import automatically, so this script
+        # never operates on a stale manifest again -- previously this was a
+        # manual prerequisite, easy to forget or run against an outdated
+        # (eg. collapsed-stack) selection. Menu path/structure matches
+        # metadataTool.py's apply_lrplugin() exactly, including the
+        # "   JSON Import" 3-leading-spaces quirk confirmed there.
+        db.d("Triggering JSON Import to refresh the manifest...")
+
+        self.reset_selection_to_first(select_all_after=True)
+
+        script = '''
+        tell application "Adobe Lightroom Classic" to activate
+        delay 0.3
+        tell application "System Events"
+            tell process "Adobe Lightroom Classic"
+                click menu bar item "Library" of menu bar 1
+                delay 0.3
+                click menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                delay 0.3
+                tell menu item "   JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                    perform action "AXPress"
+                end tell
+                delay 0.3
+            end tell
+        end tell
+        '''
+
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print("=" * 70)
+            print("ERROR: JSON Import menu click failed.")
+            print(result.stderr.strip())
+            print("=" * 70)
+            self.stop_flag = True
+            return False
+
+        print("Waiting for you to press Enter once the 'Import complete' dialog is up...")
+
+        self.enter_event.clear()
+
+        while not self.enter_event.is_set():
+            if self.stop_flag:
+                return False
+            time.sleep(0.01)
+
+        return True
 
     def trigger_sync_metadata(self):
         # Confirmed to behave identically to the panel's Sync button.
@@ -376,13 +460,21 @@ class SyncVCs:
 
     def run(self):
 
+        self.activate_lightroom()
+        self.ensure_library_module()
+
+        if not self.trigger_json_import():
+            return
+
+        self.reset_selection_to_first(select_all_after=False)
+
         entries, warnings = self.read_manifest()
         print(f"\nManifest read: {len(entries)} stack(s), {len(warnings)} warning(s).")
 
         if warnings:
             print("\nWARNING: some files need renaming before syncing can proceed.")
             self.rename_pass(warnings)
-            print("\nManifest is now stale after renaming -- re-run the JSON Import to rebuild it, then run this script again.")
+            print("\nManifest is now stale after renaming -- re-run this script to rebuild it and sync.")
             # Always stop here, renamed or not -- the manifest was built
             # against the OLD filenames/order and is now stale either way.
             return
@@ -392,16 +484,12 @@ class SyncVCs:
             print(f"TEST_LIMIT set -- only processing the first {TEST_LIMIT} stack(s).")
 
         print(f"\n{len(entries)} stack(s) to process.")
-        print("Prerequisites -- confirm ALL of these before continuing:")
+        print("Prerequisites -- confirm these before continuing:")
         print("  1. Every stack in Quick Collection is EXPANDED")
         print("     (Photo > Stacking > Expand All Stacks)")
         print("  2. Sync Metadata's checkboxes are already set the way you want")
         print("     (run it once by hand this session if you haven't)")
-        print("  3. The FIRST photo in Quick Collection is currently selected")
         print("\nPress ESC anytime to stop\n")
-
-        self.activate_lightroom()
-        self.ensure_library_module()
 
         synced = 0
         skipped = 0

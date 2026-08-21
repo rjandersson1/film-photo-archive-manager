@@ -24,6 +24,8 @@
 #   python importMetadata.py
 
 import os
+import time
+import subprocess
 import importlib.util
 import threading
 
@@ -58,6 +60,46 @@ def wait_for_keypress(prompt, accept_key="."):
     accept_event.wait()
 
     listener.stop()
+
+
+def activate_lightroom():
+    # Matches syncVCs.py's activate_lightroom() -- the terminal is
+    # frontmost right after typing the roll index, so any keystrokes meant
+    # for Lightroom (the selection reset below) would otherwise go nowhere
+    # useful until this runs first.
+    subprocess.run(
+        ["osascript", "-e", 'tell application "Adobe Lightroom Classic" to activate'],
+        capture_output=True,
+        text=True
+    )
+    time.sleep(0.3)
+
+
+def reset_selection_to_first(select_all_after=True):
+    # Deterministic starting selection regardless of whatever was selected
+    # before: select everything, then Up collapses that down to just the
+    # FIRST photo -- a fixed, known anchor point -- then (by default)
+    # re-selects everything from there, since the JSON Import step that
+    # follows the wait_for_keypress() breakpoint below needs every photo
+    # selected. Matches syncVCs.py's reset_selection_to_first() exactly.
+    kb = keyboard.Controller()
+
+    kb.press(keyboard.Key.cmd)
+    kb.press('a')
+    kb.release('a')
+    kb.release(keyboard.Key.cmd)
+    time.sleep(0.3)
+
+    kb.press(keyboard.Key.up)
+    kb.release(keyboard.Key.up)
+    time.sleep(0.3)
+
+    if select_all_after:
+        kb.press(keyboard.Key.cmd)
+        kb.press('a')
+        kb.release('a')
+        kb.release(keyboard.Key.cmd)
+        time.sleep(0.3)
 
 
 def find_roll_folder(library_path, index):
@@ -207,6 +249,10 @@ def load_metadata_tool_class():
 def main():
     print(f'Importing metadata for library: {LIBRARY_PATH}')
     roll_root, index = prompt_roll_folder()
+
+    activate_lightroom()
+    reset_selection_to_first(select_all_after=True)
+
     scans_path = os.path.join(roll_root, '01_scans')
 
     xlsx_path = find_metadata_xlsx(roll_root)
