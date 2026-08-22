@@ -55,3 +55,4 @@ lrplugin-dev/sdk/*
 lrplugin-dev/metadata.*
 metadata.json
 metadata.xlsx
+lrplugin-dev/vc_manifest.txt
