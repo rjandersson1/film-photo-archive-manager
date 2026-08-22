@@ -43,8 +43,11 @@ class collectionObj:
         # Initialize dicts
         self.stocklist = {}
         self.cameralist = {}
+        self.lenslist = {}
+        self.lenslist_by_make_focal = {}
         self.build_stocklist()
         self.build_cameralist()
+        self.build_lenslist()
         self.rolls = []  # List to store RollMetadata instances for each roll
 
     def init(self):
@@ -556,6 +559,79 @@ class collectionObj:
                 cameralist[entry["model"]] = entry
 
         self.cameralist = cameralist
+
+    def build_lenslist(self):
+        # Reference table for importMetadata.py's Lens Make/Model <-> Focal
+        # Length auto-fill (both directions):
+        #   - self.lenslist: keyed by "{make} {model}" -- forward lookup
+        #     (Make+Model filled, Focal Length blank).
+        #   - self.lenslist_by_make_focal: keyed by (make.lower(), focalLength)
+        #     -> list of candidate entries -- reverse lookup (Make+Focal
+        #     Length filled, Model blank). A make+focal-length pair isn't
+        #     always unique (eg. a 135-format and a 6x7-format lens can
+        #     share the same nominal focal length), so this can hold more
+        #     than one candidate -- disambiguated by "format" at merge time.
+        # Unlike stocklist/cameralist, a missing file is tolerated -- this
+        # is meant to be populated manually/incrementally, same as the
+        # other two, but shouldn't block startup if it doesn't exist yet.
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        xlsx_path = os.path.join(project_dir, 'data', 'lenslist.xlsx')
+
+        if not os.path.exists(xlsx_path):
+            db.w(self.dbIdx, 'No lenslist.xlsx found -- Lens Model/Focal Length '
+                              'auto-fill will be skipped.', xlsx_path)
+            self.lenslist = {}
+            self.lenslist_by_make_focal = {}
+            return
+
+        df = pd.read_excel(xlsx_path, dtype=str, engine="openpyxl").fillna("")
+
+        # lenslist.xlsx is hand-maintained in Excel -- tolerate an older/
+        # partial column set (eg. re-saved from a stale copy that predates a
+        # newer column) rather than crashing outright. "format" specifically
+        # backs make+focal-length disambiguation (see lenslist_by_make_focal
+        # below); flag its absence since that silently degrades matching.
+        if 'format' not in df.columns:
+            db.w(self.dbIdx, 'lenslist.xlsx has no "format" column -- ambiguous '
+                              'make+focal-length lens matches (eg. a 135 and a 6x7 '
+                              'lens sharing a nominal focal length) can\'t be '
+                              'disambiguated. Add a "format" column to enable this.',
+                 xlsx_path)
+
+        def get(row, col):
+            return row.get(col, '').strip()
+
+        lenslist = {}
+        lenslist_by_make_focal = {}
+
+        for _, row in df.iterrows():
+            make = get(row, "make")
+            model = get(row, "model")
+            if not make or not model:
+                continue
+
+            entry = {
+                "make": make,
+                "model": model,
+                "focalLength": get(row, "focalLength"),
+                "maxAperture": get(row, "maxAperture"),
+                "minAperture": get(row, "minAperture"),
+                "format": get(row, "format"),
+                "weight": get(row, "weight"),
+                "cost": get(row, "cost"),
+                "owned": get(row, "owned"),
+                "sold": get(row, "sold"),
+                "SN": get(row, "SN"),
+            }
+
+            lenslist[f'{make} {model}'.strip().lower()] = entry
+
+            if entry["focalLength"]:
+                key = (make.lower(), entry["focalLength"])
+                lenslist_by_make_focal.setdefault(key, []).append(entry)
+
+        self.lenslist = lenslist
+        self.lenslist_by_make_focal = lenslist_by_make_focal
 
     # Copies over all files from a roll into a designated (cleaner) collection directory with consistent filename extensions.
     def re_export_roll(self, roll):

@@ -28,6 +28,8 @@ from datetime import datetime
 
 import pandas as pd
 from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font
+from openpyxl.utils import get_column_letter
 
 import collectionObj
 
@@ -84,6 +86,72 @@ METADATA_COLUMNS = [
     "Scan Equipment", "Light Source", "Film Holder", "Digitization Notes",
     "Developer", "Dilution", "Dev Time/Temp", "Dev Method", "Dev Notes",
 ]
+
+# Condensed, user-facing subset of METADATA_COLUMNS for the "Import" sheet --
+# the fields a user actually fills in by hand, grouped and colored so the
+# sheet is easy to work in. importMetadata.py merges these into the
+# "Metadata" sheet (row-matched by rawFileName) on the next run.
+#
+# "Notes" is Import-only and never merges into Metadata -- it's a personal
+# scratch field for filling out the sheet, not part of the schema
+# lrplugin-dev/metadataTool.py hands to Lightroom.
+IMPORT_COLUMNS = [
+    "Notes", "Index", "rawFileName",
+    "Year", "Month", "Day",
+    "Sublocation", "City", "State", "Country/Region",
+    "Lens Make", "Lens Model",
+    "Aperture", "Shutter Speed", "Focal Length",
+]
+
+IMPORT_COLUMN_GROUPS = [
+    (("Notes", "Index", "rawFileName"), "DCE6F1"),                 # a
+    (("Year", "Month", "Day"), "E2EFDA"),                           # b
+    (("Sublocation", "City", "State", "Country/Region"), "FCE4D6"), # c
+    (("Lens Make", "Lens Model"), "E4DFEC"),                        # d
+    (("Aperture", "Shutter Speed", "Focal Length"), "FFF2CC"),      # e
+]
+
+
+def force_text_format(ws, column_names=None):
+    """Sets column-level number_format='@' (Text) so Excel never silently
+    reinterprets a typed value like "1/15" or "250" as a date/number --
+    applies to any cell in that column, including rows added later, since
+    it's stored as the column's own default format rather than per-cell."""
+    header = [cell.value for cell in ws[1]]
+    for idx, name in enumerate(header, start=1):
+        if column_names is not None and name not in column_names:
+            continue
+        ws.column_dimensions[get_column_letter(idx)].number_format = '@'
+
+
+def style_import_sheet(ws):
+    header = [cell.value for cell in ws[1]]
+    for names, hex_color in IMPORT_COLUMN_GROUPS:
+        fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type='solid')
+        for idx, name in enumerate(header, start=1):
+            if name in names:
+                ws.column_dimensions[get_column_letter(idx)].fill = fill
+                ws.cell(row=1, column=idx).font = Font(bold=True)
+    force_text_format(ws)
+
+
+def build_import_sheet(wb, rows):
+    """rows: list of (index, raw_file_name). Creates (or replaces) the
+    Import sheet, prefilled with Index/rawFileName so it's row-aligned with
+    Metadata from the start."""
+    if 'Import' in wb.sheetnames:
+        del wb['Import']
+    ws = wb.create_sheet('Import')
+    ws.append(IMPORT_COLUMNS)
+    idx_col = IMPORT_COLUMNS.index('Index')
+    name_col = IMPORT_COLUMNS.index('rawFileName')
+    for index, raw_file_name in rows:
+        row = [None] * len(IMPORT_COLUMNS)
+        row[idx_col] = index
+        row[name_col] = raw_file_name
+        ws.append(row)
+    style_import_sheet(ws)
+    return ws
 
 
 def get_next_index(library_path):
@@ -331,6 +399,10 @@ def build_metadata_template(roll_root, folder_name, raw_files, stk_entry, cam_en
         row[32] = lab_name                      # Dev Notes -- lab name
 
         ws.append(row)
+
+    force_text_format(ws, IMPORT_COLUMNS)   # text-format the columns shared with Import here too
+    build_import_sheet(wb, [(i, fname) for i, fname in enumerate(raw_files, start=1)])
+    wb.active = wb.sheetnames.index('Metadata')   # keep Metadata active regardless of sheet-creation order
 
     out_path = os.path.join(roll_root, f'{folder_name}_metadata.xlsx')
     wb.save(out_path)

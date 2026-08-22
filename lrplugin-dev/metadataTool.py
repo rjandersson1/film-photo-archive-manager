@@ -24,11 +24,11 @@ class db:
 # If ANY of these is None, __init__ leaves the matching self.*_pos as None,
 # and run() falls back to running calibrate() (which re-prompts for and
 # re-captures all five together) -- see run().
-CAMERA_MAKE_POS = None
-FILM_FORMAT_POS = (2431, 589)
-SCAN_METHOD_POS = (2410, 835)
-PUSH_PULL_POS = (2402, 979)
-DEVELOPED_AT_POS = (2401, 992)
+CAMERA_MAKE_POS = (2414, 528)
+FILM_FORMAT_POS = (2389, 633)
+SCAN_METHOD_POS = (2382, 882)
+PUSH_PULL_POS = (2381, 1021)
+DEVELOPED_AT_POS = (2386, 1040)
 
 # Camera IDs (cameralist.xlsx's 'id' column) that don't have interchangeable
 # lenses -- CAM+LNS combining in Intellectual Genre doesn't make sense for
@@ -361,7 +361,7 @@ class metadataTool:
                 dev_method,
                 dev_notes
 
-            ) = row
+            ) = row[:33]  # tolerate trailing columns (eg. Notes) added by importMetadata.py's Import sheet merge
 
             if raw is None:
                 continue
@@ -473,13 +473,20 @@ class metadataTool:
 
 
     def export_json(self):
-
-        with open(self.json_path, "w") as f:
-            json.dump(self.data, f, indent=4)
+        # ensure_ascii=False: the default (True) escapes every non-ASCII
+        # character as \uXXXX (eg. "…" -> "…") -- valid JSON, but the
+        # Lightroom-side plugin's bundled json.lua decoder doesn't
+        # implement \uXXXX escapes and throws "Invalid escape sequence" the
+        # moment a Shooting/Gear/Dev Notes field (or any free-text field)
+        # contains so much as a curly quote or an em dash. Writing the raw
+        # UTF-8 characters instead sidesteps that entirely -- Lua strings
+        # are just byte sequences, so it reads them fine as-is.
+        with open(self.json_path, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, indent=4, ensure_ascii=False)
 
     def load_json(self):
 
-        with open(self.json_path, "r") as f:
+        with open(self.json_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def _on_press(self, key):

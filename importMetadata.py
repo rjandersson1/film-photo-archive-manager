@@ -29,11 +29,14 @@ import subprocess
 import importlib.util
 import threading
 
-from openpyxl import load_workbook, Workbook
+from openpyxl import load_workbook
 from pynput import keyboard
 
 import collectionObj
-from newRoll import LIBRARY_PATH, RAW_EXTS, METADATA_COLUMNS, list_raw_files
+from newRoll import (
+    LIBRARY_PATH, RAW_EXTS, METADATA_COLUMNS, IMPORT_COLUMNS,
+    list_raw_files, force_text_format, build_import_sheet,
+)
 
 
 def wait_for_keypress(prompt, accept_key="."):
@@ -158,7 +161,7 @@ def find_metadata_xlsx(roll_root):
 
 def read_xlsx_rows(xlsx_path):
     wb = load_workbook(xlsx_path)
-    ws = wb.active
+    ws = wb['Metadata']
     rows = []
     for row in ws.iter_rows(min_row=2, values_only=True):
         if row[1] is None:  # rawFileName
@@ -209,9 +212,10 @@ def auto_fix_xlsx(xlsx_path, scans_path, roll_root, collection):
 
     header = [cell.value for cell in ws[1]] or METADATA_COLUMNS
 
-    new_wb = Workbook()
-    new_ws = new_wb.active
-    new_ws.title = 'Metadata'
+    # Rebuild the Metadata sheet WITHIN the same, already-open workbook
+    # (not a brand-new Workbook()) so the Import sheet isn't silently
+    # dropped by this rewrite.
+    new_ws = wb.create_sheet('Metadata_rebuilt')
     new_ws.append(header)
 
     combined = list(kept) + [
@@ -231,11 +235,233 @@ def auto_fix_xlsx(xlsx_path, scans_path, roll_root, collection):
             if len(row) > 17: row[17] = stk_entry.get('boxspeed')  # Film ISO
         new_ws.append(row)
 
-    new_wb.save(xlsx_path)
+    del wb['Metadata']
+    new_ws.title = 'Metadata'
+    force_text_format(new_ws, IMPORT_COLUMNS)
+    wb.active = wb.sheetnames.index('Metadata')
+    wb.save(xlsx_path)
     print(f'Rewrote {xlsx_path}:')
     print(f'  kept:    {len(kept)}')
     print(f'  dropped: {len(rows) - len(kept)} stale row(s) (raw no longer on disk)')
     print(f'  added:   {len(new_names)} new row(s) (raw on disk with no row)')
+
+
+def ensure_workbook_structure(xlsx_path):
+    """Backward-compat migration for roll xlsx files that predate the Import
+    sheet -- adds whatever's missing (Import sheet, text formatting).
+    Idempotent: safe to call on every run, a no-op once a file is already
+    migrated. Notes is Import-only and never added to Metadata -- see
+    merge_import_into_metadata()."""
+    wb = load_workbook(xlsx_path)
+
+    if 'Metadata' not in wb.sheetnames:
+        wb.active.title = 'Metadata'   # every writer in this repo already names it this; defensive fallback
+
+    ws = wb['Metadata']
+
+    if 'Import' not in wb.sheetnames:
+        rows = [
+            (row[0], row[1])
+            for row in ws.iter_rows(min_row=2, values_only=True)
+            if row[1] is not None
+        ]
+        build_import_sheet(wb, rows)
+
+    force_text_format(ws, IMPORT_COLUMNS)
+    wb.active = wb.sheetnames.index('Metadata')
+    wb.save(xlsx_path)
+
+
+# -------- Import sheet -> Metadata sheet merge --------
+
+def _is_blank(value):
+    return value is None or (isinstance(value, str) and value.strip() == '')
+
+
+def normalize_shutter_speed_for_import(value):
+    """Rules for a user-typed Shutter Speed cell on the Import sheet:
+      - blank -> nothing to merge
+      - bare integer (eg. 250, or the string "250" -- the Import sheet's
+        columns are forced to Text format, so Excel stores a typed number
+        as a literal digit string, not a Python int/float; both are
+        treated the same here) -> reciprocal fraction, "1/250" (shorthand
+        for sub-1s speeds)
+      - any other string (eg. "1/125", "5s", "1h30m", "1h43m20s") -> kept
+        exactly as typed, already unambiguous
+      - a plain decimal with no unit suffix (eg. 3.5, or the string "3.5")
+        -> ambiguous (could mean 3.5 seconds, could be a mistyped
+        fraction) -- warn and skip rather than guess
+    """
+    if _is_blank(value):
+        return None
+    if isinstance(value, bool):  # bool is an int subclass -- guard before the int check
+        return None
+    if isinstance(value, int):
+        return f'1/{value}'
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return f'1/{stripped}'
+        try:
+            float(stripped)
+        except ValueError:
+            return value   # not a plain number -- already formatted ("5s", "1/125", "1h30m", ...)
+        print(f'Warning: ambiguous Shutter Speed value {value!r} in Import sheet '
+              f'(a plain decimal with no unit) -- leaving blank. Type it as eg. '
+              f'"{stripped}s" if that\'s seconds, or as a fraction like "1/{stripped}".')
+        return None
+    if isinstance(value, float):
+        print(f'Warning: ambiguous Shutter Speed value {value!r} in Import sheet '
+              f'(Excel likely auto-converted a typed value) -- leaving blank. '
+              f'Retype it with the cell set to Text format.')
+        return None
+    return None
+
+
+def infer_focal_length(lens_make, lens_model, focal_length_value, lenslist):
+    """Only fires when Focal Length is blank and both Lens Make/Model are
+    filled -- looks up "{make} {model}" (normalized) in data/lenslist.xlsx."""
+    if not _is_blank(focal_length_value):
+        return focal_length_value
+    if _is_blank(lens_make) or _is_blank(lens_model):
+        return focal_length_value
+    key = f'{lens_make} {lens_model}'.strip().lower()
+    entry = lenslist.get(key)
+    if entry and entry.get('focalLength'):
+        return entry['focalLength']
+    return focal_length_value
+
+
+def infer_lens_model(lens_make, focal_length, lens_model_value, format_hint, lenslist_by_make_focal):
+    """Reverse of infer_focal_length: only fires when Lens Model is blank
+    and both Lens Make + Focal Length are filled. A make+focal-length pair
+    isn't always unique on its own (eg. a 135-format and a 6x7-format lens
+    can share the same nominal focal length) -- format_hint (the roll's
+    camera's filmformat, from cameralist.xlsx) disambiguates when more than
+    one candidate matches. Never guesses if it's still ambiguous after
+    that -- leaves blank and warns rather than picking wrong."""
+    if not _is_blank(lens_model_value):
+        return lens_model_value
+    if _is_blank(lens_make) or _is_blank(focal_length):
+        return lens_model_value
+
+    key = (str(lens_make).strip().lower(), str(focal_length).strip())
+    candidates = lenslist_by_make_focal.get(key, [])
+    if not candidates:
+        return lens_model_value
+
+    if len(candidates) > 1 and format_hint:
+        filtered = [c for c in candidates if c['format'].strip().lower() == format_hint.strip().lower()]
+        if filtered:
+            candidates = filtered
+
+    if len(candidates) == 1:
+        return candidates[0]['model']
+
+    names = ', '.join(sorted({c['model'] for c in candidates}))
+    print(f'Warning: "{lens_make} {focal_length}mm" matches {len(candidates)} lenses in '
+          f'lenslist.xlsx ({names}) -- add/fix the "format" column there to disambiguate, '
+          f'or fill in Lens Model by hand. Leaving blank.')
+    return lens_model_value
+
+
+def prompt_resolve_conflict(raw_file_name, column_name, a_value, b_value):
+    print(f'\nConflict on "{raw_file_name}" / {column_name}:')
+    print(f'  [a] Import:   {a_value!r}')
+    print(f'  [b] Metadata: {b_value!r}')
+    while True:
+        raw = input('  Keep which? [a/B] ').strip().lower()
+        if raw in ('', 'b'):
+            return b_value
+        if raw == 'a':
+            return a_value
+        print('  Enter "a" or "b" (blank keeps Metadata\'s existing value).')
+
+
+def merge_import_into_metadata(xlsx_path, collection):
+    """Merges the Import sheet's user-filled values into Metadata, row-
+    matched by rawFileName. Only-one-side-filled cells merge silently;
+    both-filled-and-different cells stop the silent merge and prompt
+    interactively per cell (prompt_resolve_conflict) rather than either
+    guessing or aborting the whole run."""
+    wb = load_workbook(xlsx_path)
+    if 'Import' not in wb.sheetnames:
+        return
+    ws_a = wb['Import']
+    ws_b = wb['Metadata']
+
+    header_a = [c.value for c in ws_a[1]]
+    header_b = [c.value for c in ws_b[1]]
+    col_idx_b = {name: i + 1 for i, name in enumerate(header_b) if name is not None}
+
+    name_col_b = col_idx_b.get('rawFileName')
+    if name_col_b is None:
+        return
+
+    cam_make_col_b = col_idx_b.get('Camera Make')
+    cam_model_col_b = col_idx_b.get('Camera Model')
+
+    rows_b_by_name = {}
+    for r in range(2, ws_b.max_row + 1):
+        fname = ws_b.cell(row=r, column=name_col_b).value
+        if fname is not None:
+            rows_b_by_name[fname] = r
+
+    # Notes is Import-only and never merges into Metadata (it's a personal
+    # scratch field, not part of the schema handed to Lightroom).
+    shared_columns = [c for c in IMPORT_COLUMNS if c not in ('rawFileName', 'Notes')]
+    merged_count = 0
+    conflict_count = 0
+
+    for r in range(2, ws_a.max_row + 1):
+        row_a = {header_a[i]: ws_a.cell(row=r, column=i + 1).value
+                 for i in range(len(header_a)) if header_a[i] is not None}
+        fname = row_a.get('rawFileName')
+        if _is_blank(fname):
+            continue
+        if fname not in rows_b_by_name:
+            print(f'Warning: "{fname}" is in Import but has no matching Metadata row -- skipping.')
+            continue
+        b_row = rows_b_by_name[fname]
+
+        format_hint = None
+        if cam_make_col_b and cam_model_col_b:
+            cam_make = ws_b.cell(row=b_row, column=cam_make_col_b).value
+            cam_model = ws_b.cell(row=b_row, column=cam_model_col_b).value
+            if not _is_blank(cam_make) and not _is_blank(cam_model):
+                cam_entry = collection.cameralist.get(f'{cam_make} {cam_model}'.strip())
+                if cam_entry:
+                    format_hint = cam_entry.get('filmformat')
+
+        row_a['Shutter Speed'] = normalize_shutter_speed_for_import(row_a.get('Shutter Speed'))
+        row_a['Focal Length'] = infer_focal_length(
+            row_a.get('Lens Make'), row_a.get('Lens Model'),
+            row_a.get('Focal Length'), collection.lenslist,
+        )
+        row_a['Lens Model'] = infer_lens_model(
+            row_a.get('Lens Make'), row_a.get('Focal Length'),
+            row_a.get('Lens Model'), format_hint, collection.lenslist_by_make_focal,
+        )
+
+        for col in shared_columns:
+            a_val = row_a.get(col)
+            if _is_blank(a_val) or col not in col_idx_b:
+                continue
+            b_cell = ws_b.cell(row=b_row, column=col_idx_b[col])
+            b_val = b_cell.value
+            if _is_blank(b_val):
+                b_cell.value = a_val
+                merged_count += 1
+            elif str(a_val).strip() != str(b_val).strip():
+                resolved = prompt_resolve_conflict(fname, col, a_val, b_val)
+                if resolved != b_val:
+                    b_cell.value = resolved
+                conflict_count += 1
+
+    wb.active = wb.sheetnames.index('Metadata')
+    wb.save(xlsx_path)
+    if merged_count or conflict_count:
+        print(f'Merged Import -> Metadata: {merged_count} cell(s) filled, {conflict_count} conflict(s) resolved.')
 
 
 def load_metadata_tool_class():
@@ -259,6 +485,11 @@ def main():
         print(f'No *_metadata.xlsx found in {roll_root}. Run newRoll.py for this roll first.')
         return
 
+    collection = collectionObj.collectionObj(LIBRARY_PATH)
+
+    ensure_workbook_structure(xlsx_path)
+    merge_import_into_metadata(xlsx_path, collection)
+
     missing_on_disk, missing_in_xlsx, xlsx_count, disk_count = reconcile(xlsx_path, scans_path)
 
     if missing_on_disk or missing_in_xlsx:
@@ -278,7 +509,6 @@ def main():
             print('Aborted. Lightroom was not touched. Fix the xlsx by hand and rerun.')
             return
 
-        collection = collectionObj.collectionObj(LIBRARY_PATH)
         auto_fix_xlsx(xlsx_path, scans_path, roll_root, collection)
 
         missing_on_disk, missing_in_xlsx, xlsx_count, disk_count = reconcile(xlsx_path, scans_path)
