@@ -168,6 +168,28 @@ class importTool:
         preview.save(path)
         return
 
+    # Wipes dest_folder and refills it verbatim from source_folder. Returns
+    # the number of files copied (0 signals an empty/wrong source, and
+    # leaves dest_folder untouched).
+    def sync_folder_from_source(self, source_folder, dest_folder, extensions=('.jpg', '.jpeg', '.png')):
+        files = [f for f in os.listdir(source_folder)
+                 if f.lower().endswith(extensions) and not f.startswith('._')]
+        if not files:
+            return 0
+
+        if os.path.isdir(dest_folder):
+            shutil.rmtree(dest_folder)
+        os.makedirs(dest_folder)
+
+        for f in files:
+            shutil.copy2(os.path.join(source_folder, f), os.path.join(dest_folder, f))
+
+        return len(files)
+
+    def clear_folder(self, folder):
+        if os.path.isdir(folder):
+            shutil.rmtree(folder)
+
 
     def copy_roll(self, roll, dest_folder):
 
@@ -575,6 +597,14 @@ class importTool:
 
         progress_index = 0
 
+        # Previews/edits are fully derived output (no source-of-truth
+        # content) -- clear them first so a copy/VC dropped since the last
+        # run doesn't leave a stale file behind.
+        if clean_preview:
+            self.clear_folder(previews_path)
+        if clean_edits:
+            self.clear_folder(edits_path)
+
         # Copy to directories
         for img in roll.images:
             # Copy raw if exists to scans
@@ -701,6 +731,20 @@ class importTool:
                 post=f"Exporting EXIF JSON...",
                 mode="info"
             )
+
+        # copy_jpg above copies each legacy-named source jpg to its renamed
+        # destination WITHIN the same 02_exports folder without removing the
+        # original -- prune those now-redundant legacy-named files so
+        # 02_exports ends up holding only the current masters' renamed jpgs.
+        # This has to run LAST: contact sheet rendering above still reads
+        # from img.filePath (the legacy-named original), so pruning any
+        # earlier would break rendering with a FileNotFoundError.
+        if clean_jpg:
+            expected = {self.get_photo_name(img) + os.path.splitext(img.filePath)[1]
+                        for img in roll.images}
+            for f in os.listdir(exports_path):
+                if f not in expected and not f.startswith('.'):
+                    os.remove(os.path.join(exports_path, f))
 
         # Progress update
         db.progress(

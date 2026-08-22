@@ -57,6 +57,15 @@ def pick_roll_folder():
     return folder or None
 
 
+def pick_lr_exports_folder():
+    root = Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    folder = askdirectory(title='Select the fresh Lightroom exports folder')
+    root.destroy()
+    return folder or None
+
+
 def prompt_yes_no(question, default=True):
     suffix = '[Y/n]' if default else '[y/N]'
     raw = input(f'{question} {suffix} ').strip().lower()
@@ -80,6 +89,62 @@ def prompt_clean_steps():
 def prompt_export_path(default_path):
     raw = input(f'Export path [{default_path}]: ').strip()
     return raw or default_path
+
+
+def sync_lr_exports(importer, folder):
+    """
+    Refreshes folder/02_exports (and clears folder/04_edits) from a
+    freshly-picked Lightroom exports folder, so the roll parses the
+    CURRENT Lightroom state -- stale/renamed/deleted VCs from a previous
+    clean don't linger. Only applies to a roll that already has an
+    02_exports folder (an already-cleaned/in-place roll being refreshed).
+    """
+    exports_path = os.path.join(folder, '02_exports')
+    edits_path = os.path.join(folder, '04_edits')
+
+    if not os.path.isdir(exports_path):
+        db.w('[C]', 'No existing 02_exports folder -- skipping LR-exports sync.', folder)
+        return
+
+    lr_exports_folder = pick_lr_exports_folder()
+    if not lr_exports_folder:
+        db.w('[C]', 'No LR-exports folder selected, skipping sync.')
+        return
+    lr_exports_folder = os.path.normpath(lr_exports_folder)
+
+    # Guard against wiping the roll's own exports using itself (or its
+    # parent) as the "fresh" source.
+    real_folder = os.path.realpath(folder)
+    real_lr = os.path.realpath(lr_exports_folder)
+    if real_lr == real_folder or real_lr.startswith(real_folder + os.sep) or real_folder.startswith(real_lr + os.sep):
+        db.e('[C]', 'LR-exports folder overlaps the roll folder, aborting sync to avoid data loss:', lr_exports_folder)
+        return
+
+    valid_exts = ('.jpg', '.jpeg', '.png')
+    new_count = len([f for f in os.listdir(lr_exports_folder)
+                      if f.lower().endswith(valid_exts) and not f.startswith('._')])
+    if new_count == 0:
+        db.e('[C]', 'No image files found in LR-exports folder, aborting sync:', lr_exports_folder)
+        return
+
+    old_exports_count = len(os.listdir(exports_path)) if os.path.isdir(exports_path) else 0
+    old_edits_count = len(os.listdir(edits_path)) if os.path.isdir(edits_path) else 0
+
+    print(f'\nThis will replace the contents of 02_exports and 04_edits:')
+    print(f'  02_exports: {old_exports_count} existing files -> {new_count} fresh files from {lr_exports_folder}')
+    print(f'  04_edits:   {old_edits_count} existing files -> rebuilt from the fresh exports')
+
+    if not prompt_yes_no('Proceed with sync? This deletes the files listed above.', default=False):
+        db.w('[C]', 'Cancelled by user.')
+        return
+
+    # 04_edits must be cleared BEFORE the roll is parsed: process_images()
+    # scans 04_edits into roll.images before process_copies() groups
+    # copies by dateExposed, so stale 04_edits content would corrupt VC
+    # grouping on this run.
+    importer.clear_folder(edits_path)
+    importer.sync_folder_from_source(lr_exports_folder, exports_path, extensions=valid_exts)
+    db.i('[C]', f'Synced {new_count} files from LR-exports into 02_exports.', exports_path)
 
 
 def clean_in_place(collection, importer, roll, folder, steps):
@@ -150,6 +215,10 @@ def main():
     # single-roll clean.
     collection = collectionObj.collectionObj(os.path.dirname(folder))
     importer = importTool.importTool()
+
+    if os.path.isdir(os.path.join(folder, '02_exports')):
+        if prompt_yes_no('Sync fresh JPG exports from a separate Lightroom-exports folder first?', default=False):
+            sync_lr_exports(importer, folder)
 
     roll = collection.import_roll_from_path(folder)
     if roll is None:

@@ -24,7 +24,7 @@ class db:
 # If ANY of these is None, __init__ leaves the matching self.*_pos as None,
 # and run() falls back to running calibrate() (which re-prompts for and
 # re-captures all five together) -- see run().
-CAMERA_MAKE_POS = (2417, 489)
+CAMERA_MAKE_POS = None
 FILM_FORMAT_POS = (2431, 589)
 SCAN_METHOD_POS = (2410, 835)
 PUSH_PULL_POS = (2402, 979)

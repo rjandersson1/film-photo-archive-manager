@@ -740,12 +740,19 @@ class Renderer:
                         if cpy.isSquare and cpy.filmformat == '6x6':
                             rebates.append(self.get_rebate("6x6"))
                             keys.append("6x6")
-                        if cpy.isSquare and cpy.filmformat == '6x7':
+                        elif cpy.isSquare and cpy.filmformat == '6x7':
                             rebates.append(self.get_rebate("6x7"))
                             keys.append("6x7")
-                        if cpy.isPano:
+                        elif cpy.isPano:
                             keys.append("6x17")
                             rebates.append(self.get_rebate("6x17"))
+                        else:
+                            # Cropped copy that's neither square nor pano (e.g.
+                            # a 6x7 crop with an adjusted aspect ratio) -- fall
+                            # back to the copy's own nominal filmformat rebate
+                            # so images/metadata stay aligned with rebates/keys.
+                            keys.append(None)
+                            rebates.append(self.get_rebate(str(cpy.filmformat)))
                     else:
                         keys.append(None)
                         db.e("[R]", "Could not ID format for copy!")
