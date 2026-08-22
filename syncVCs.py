@@ -52,6 +52,7 @@ import subprocess
 import threading
 
 from pathlib import Path
+from datetime import datetime
 from pynput import keyboard
 from pynput.keyboard import Controller, Key
 
@@ -84,7 +85,10 @@ SYNC_DIALOG_DELAY = DELAY_CONST + 0.5
 # the next stack's selection will be wrong. Increase this first if stacks
 # start getting skipped/miscounted partway through a run.
 # Same caveat, for the Rename Photo dialog instead.
-RENAME_DIALOG_DELAY = DELAY_CONST + 0.5
+RENAME_DIALOG_DELAY = DELAY_CONST + 0.03
+# Same caveat again, for the Edit Capture Time dialog.
+EDIT_CAPTURE_TIME_DIALOG_DELAY = DELAY_CONST + 0.5
+EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS = DELAY_CONST + 0.00
 
 # "-positive" -> "_positive" only, preserving any "-N" suffix ("-positive-2"
 # stays distinct from "-positive") -- chosen over renaming to match the raw
@@ -97,6 +101,14 @@ POSITIVE_RENAME_RE = re.compile(r'-positive', re.IGNORECASE)
 def build_renamed_stem(filename):
     stem = Path(filename).stem
     return POSITIVE_RENAME_RE.sub('_positive', stem, count=1)
+
+
+def parse_iso8601(iso_str):
+    # Importer.lua's dateTimeOriginalISO8601 -- handles a trailing "Z" (UTC)
+    # manually since Python's fromisoformat() only accepts that from 3.11
+    # onward, and this needs to work regardless of which 3.x is installed.
+    normalized = iso_str[:-1] + "+00:00" if iso_str.endswith("Z") else iso_str
+    return datetime.fromisoformat(normalized)
 
 
 class SyncVCs:
@@ -128,6 +140,7 @@ class SyncVCs:
             "left": Key.left,
             "right": Key.right,
             "up": Key.up,
+            "tab": Key.tab,
             "enter": Key.enter,
             "esc": Key.esc,
         }
@@ -355,6 +368,88 @@ class SyncVCs:
 
         return True
 
+    def type_digits(self, value_str):
+        # Confirmed: Edit Capture Time's fields need each digit typed
+        # individually -- paste_text() (clipboard-based) is NOT used here,
+        # per confirmed testing.
+        for ch in value_str:
+            self.press(ch)
+            time.sleep(DELAY_KEYPRESS)
+
+    def trigger_edit_capture_time(self):
+        # Confirmed menu path: Metadata > Edit Capture Time...
+        script = '''
+        tell application "Adobe Lightroom Classic" to activate
+        delay 0.2
+        tell application "System Events"
+            tell process "Adobe Lightroom Classic"
+                click menu bar item "Metadata" of menu bar 1
+                delay 0.2
+                click menu item "Edit Capture Time..." of menu 1 of menu bar item "Metadata" of menu bar 1
+                delay 0.2
+            end tell
+        end tell
+        '''
+
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print("=" * 70)
+            print("ERROR: Edit Capture Time menu click failed.")
+            print(result.stderr.strip())
+            print("=" * 70)
+            self.stop_flag = True
+            return False
+
+        return True
+
+    def set_date_time_original(self, target_iso):
+        # SDK cannot write dateTimeOriginal at all (confirmed: EXIF fields
+        # aren't writable via setRawMetadata, only IPTC) -- this is the only
+        # way to actually correct it for a VC that was created before its
+        # master's date was fixed. Field order confirmed: DD, MM, YYYY, HH,
+        # MM, SS, each Tab-separated, Enter after the last one -- no Tab
+        # after SS.
+        dt = parse_iso8601(target_iso)
+
+        if not self.trigger_edit_capture_time():
+            return False
+
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY)
+
+        self.type_digits(f"{dt.day:02d}")
+        self.press("tab")
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS)
+
+        self.type_digits(f"{dt.month:02d}")
+        self.press("tab")
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS)
+
+        self.type_digits(f"{dt.year:04d}")
+        self.press("tab")
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS)
+
+        self.type_digits(f"{dt.hour:02d}")
+        self.press("tab")
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS)
+
+        self.type_digits(f"{dt.minute:02d}")
+        self.press("tab")
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS)
+
+        self.type_digits(f"{dt.second:02d}")
+        time.sleep(EDIT_CAPTURE_TIME_DIALOG_DELAY_KEYPRESS)
+
+        time.sleep(0.3)
+        self.press("enter")
+        time.sleep(0.3)
+
+        return True
+
     def rename_pass(self, warnings):
         # Renames every flagged "-positive[...].tif" file through Lightroom's
         # own Rename Photo dialog (not a raw filesystem rename), so the
@@ -424,7 +519,11 @@ class SyncVCs:
         warnings = []
 
         for line in MANIFEST_PATH.read_text().splitlines():
-            line = line.strip()
+            # splitlines() already removes the newline -- deliberately NOT
+            # calling .strip() here, since that also eats a trailing tab
+            # when mismatch_str is empty (the common case), which broke the
+            # split below (confirmed via testing: "...\t2025-...\t".strip()
+            # silently drops the empty 4th field entirely).
             if not line:
                 continue
             parts = line.split("\t")
@@ -433,12 +532,49 @@ class SyncVCs:
                 fname, pos_str = parts[1], parts[2]
                 warnings.append((fname, int(pos_str)))
             else:
-                fname, count_str = parts[0], parts[1]
-                entries.append((fname, int(count_str)))
+                # <filename>\t<copyCount>\t<masterDateISO8601>\t<comma-separated
+                # 1-based mismatched VC positions, or empty>
+                fname, count_str, master_dt = parts[0], parts[1], parts[2]
+                mismatch_str = parts[3] if len(parts) > 3 else ""
+                mismatch_positions = [int(p) - 1 for p in mismatch_str.split(",")] if mismatch_str else []
+                entries.append((fname, int(count_str), master_dt, mismatch_positions))
 
         return entries, warnings
 
-    def sync_stack(self, fname, copy_count):
+    def sync_stack(self, fname, copy_count, master_dt, mismatch_positions):
+
+        # Fix dateTimeOriginal mismatches FIRST, before the Shift+Right
+        # extension below -- doing it after would mean collapsing a
+        # multi-photo selection (master + all VCs, from Sync Metadata) back
+        # down to one specific VC, and Lightroom's plain-arrow behavior on a
+        # multi-selection isn't confirmed. Doing it first means every step
+        # here is single-photo navigation, using only already-confirmed
+        # behavior. The end result is identical either way -- Sync Metadata
+        # can't touch this field regardless of order (confirmed: SDK can't
+        # write EXIF fields), so the two operations don't depend on each
+        # other.
+        if mismatch_positions:
+            db.d(f"{fname}: fixing dateTimeOriginal for VC position(s) {mismatch_positions}")
+
+            current_pos = 0
+            for pos in mismatch_positions:
+                if self.stop_flag:
+                    return False
+
+                steps = pos - current_pos
+                for _ in range(steps):
+                    self.press("right")
+                    time.sleep(DELAY_DEFAULT)
+                current_pos = pos
+
+                if not self.set_date_time_original(master_dt):
+                    return False
+
+            # Back to the master (position 0) before extending the
+            # selection for Sync Metadata below.
+            for _ in range(current_pos):
+                self.press("left")
+                time.sleep(DELAY_DEFAULT)
 
         db.d(f"{fname}: extending selection by {copy_count} (Shift+Right x{copy_count})")
 
@@ -493,14 +629,17 @@ class SyncVCs:
 
         synced = 0
         skipped = 0
+        date_fixed = 0
 
-        for fname, copy_count in entries:
+        for fname, copy_count, master_dt, mismatch_positions in entries:
 
             if self.stop_flag:
                 break
 
+            date_fixed += len(mismatch_positions)
+
             if copy_count > 0:
-                ok = self.sync_stack(fname, copy_count)
+                ok = self.sync_stack(fname, copy_count, master_dt, mismatch_positions)
                 if not ok:
                     break
                 synced += 1
@@ -518,9 +657,14 @@ class SyncVCs:
 
         if self.stop_flag:
             print(f"\nStopped early. Synced {synced}, skipped {skipped}, "
-                  f"{len(entries) - synced - skipped} not reached.")
+                  f"{len(entries) - synced - skipped} not reached. "
+                  f"Date-fixed {date_fixed} VC(s) so far.")
         else:
-            print(f"\nDone. Synced {synced} stack(s), skipped {skipped} (no VCs/companions).")
+            print(f"\nDone. Synced {synced} stack(s), skipped {skipped} (no VCs/companions), "
+                  f"date-fixed {date_fixed} VC(s).")
+            if date_fixed:
+                print("Spot-check a few of the date-fixed VCs against their master to confirm --")
+                print("this doesn't re-verify against Lightroom after typing the values in.")
 
 
 if __name__ == "__main__":

@@ -245,7 +245,6 @@ def load_metadata_tool_class():
     spec.loader.exec_module(module)
     return module.metadataTool
 
-
 def main():
     print(f'Importing metadata for library: {LIBRARY_PATH}')
     roll_root, index = prompt_roll_folder()

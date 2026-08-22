@@ -162,6 +162,41 @@ local function getStackCompanionsOf(masterPhoto, recordFileNames)
 end
 
 
+-- SDK cannot write EXIF fields at all (confirmed: photo:setRawMetadata()
+-- has no "dateTimeOriginal" key -- IPTC-only), so nothing here writes a
+-- date. This only DETECTS mismatches for syncVCs.py's manual field-entry
+-- fix step: for masterPhoto's stack, which members (1-based position,
+-- matching how many plain Right-arrow presses from the master reaches
+-- them) have a dateTimeOriginal that doesn't match the master's.
+--
+-- Uses stackInFolderMembers directly (Lightroom's own on-screen stack
+-- order) rather than the JSON-derived VC/companion lists -- this needs to
+-- reflect exactly what Right-arrow navigation would step through,
+-- regardless of whether a member is a true virtual copy or a real stacked
+-- file. dateTimeOriginalISO8601 (not the plain, locale-formatted
+-- dateTimeOriginal) is used for both the comparison and the value
+-- syncVCs.py types in, since it's an unambiguous, locale-independent
+-- format -- confirmed as a real, documented getRawMetadata key.
+local function checkDateMismatches(masterPhoto)
+
+    local masterDate = masterPhoto:getRawMetadata("dateTimeOriginalISO8601")
+    local members = masterPhoto:getRawMetadata("stackInFolderMembers") or {}
+    local mismatchPositions = {}
+
+    for i, member in ipairs(members) do
+        if member ~= masterPhoto then
+            local memberDate = member:getRawMetadata("dateTimeOriginalISO8601")
+            if memberDate ~= masterDate then
+                table.insert(mismatchPositions, i)
+            end
+        end
+    end
+
+    return masterDate, mismatchPositions
+
+end
+
+
 function Importer.run()
 
     local catalog = LrApplication.activeCatalog()
@@ -301,7 +336,12 @@ function Importer.run()
                 local total = p:getRawMetadata("countStackInFolderMembers") or 0
                 local copyCount = math.max(total - 1, 0)
                 local fname = p:getFormattedMetadata("fileName") or ""
-                manifestFile:write(fname .. "\t" .. tostring(copyCount) .. "\n")
+
+                local masterDate, mismatchPositions = checkDateMismatches(p)
+                local mismatchStr = table.concat(mismatchPositions, ",")
+
+                manifestFile:write(fname .. "\t" .. tostring(copyCount) .. "\t"
+                    .. tostring(masterDate) .. "\t" .. mismatchStr .. "\n")
             end
         end
         manifestFile:close()

@@ -29,7 +29,7 @@
 #   - If it doesn't match, cleaning in place isn't safe (nothing to build
 #     01_scans/02_exports out of predictably) -- you're prompted whether to
 #     export it to a separate library path instead, the way cleanRoll() always
-#     has, defaulting to newRoll.py's own staging path.
+#     has, defaulting to newRoll.py's own staging path. 
 
 import os
 import sys
