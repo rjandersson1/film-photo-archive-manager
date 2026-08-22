@@ -773,12 +773,23 @@ class exposureObj:
         index_str = f"{int(index):02d}" if index is not None else '??'
 
         # handle VC
-        base_name = f"{roll_index}_{date_str}_{index_str}_{stk}_{location}_{cam}_{lns}_{rating}s"
+        prefix = f"{roll_index}_{date_str}_{index_str}_{stk}_{location}_{cam}_{lns}"
 
+        # The VC number sits BEFORE rating (not after) so that sorting by
+        # filename groups a master (00) with its VCs (01, 02, ...) in order
+        # -- if it came after rating, files would sort by rating first and
+        # scatter a master's VCs apart from each other and from their master.
         if self.isCopy:
-            new_name = f"{base_name}_{self.copyType}"
+            # copyType + rating alone aren't always unique -- a master image
+            # can have multiple copies of the same type and rating (e.g. two
+            # different crops both rated 2 stars). Without a tiebreaker those
+            # copies collide onto the same new_name and silently overwrite
+            # each other on copy/rename, so every copy is numbered by its
+            # position among its master's copies.
+            vc_num = self.original.copies.index(self) + 1
+            new_name = f"{prefix}_{vc_num:02d}_{rating}s_{self.copyType}"
         else:
-            new_name = f"{base_name}"
+            new_name = f"{prefix}_00_{rating}s"
 
         self.newFileName = new_name
 
