@@ -190,9 +190,13 @@ class importTool:
 
     # Wipes dest_folder and refills it verbatim from source_folder. Returns
     # the number of files copied (0 signals an empty/wrong source, and
-    # leaves dest_folder untouched).
-    def sync_folder_from_source(self, source_folder, dest_folder, extensions=('.jpg', '.jpeg', '.png')):
-        files = [f for f in os.listdir(source_folder)
+    # leaves dest_folder untouched). If filenames is given, only those files
+    # are copied (still filtered by extensions) instead of everything in
+    # source_folder -- eg. to sync just one time-clustered export batch out
+    # of a source folder that mixes several.
+    def sync_folder_from_source(self, source_folder, dest_folder, extensions=('.jpg', '.jpeg', '.png'), filenames=None):
+        candidates = filenames if filenames is not None else os.listdir(source_folder)
+        files = [f for f in candidates
                  if f.lower().endswith(extensions) and not f.startswith('._')]
         if not files:
             return 0
@@ -365,6 +369,12 @@ class importTool:
         contact_sheets_path = os.path.join(other_path, '02_contact_sheets')
         unmatchedRAW_path = os.path.join(other_path, '03_unmatched_raws')
 
+        # copy_jpg() only creates edits_path when there's a copy to write into
+        # it, so a roll with no VCs would otherwise end up with no 04_edits
+        # folder at all -- create it upfront so the folder structure is
+        # consistent (and checkable) regardless of whether this roll has VCs.
+        if clean_edits and not os.path.exists(edits_path):
+            os.makedirs(edits_path)
 
         # Warn about raw files missing
         if roll.rawMissing:
@@ -591,6 +601,14 @@ class importTool:
         exif_path = os.path.join(other_path, '01_exif')
         contact_sheets_path = os.path.join(other_path, '02_contact_sheets')
         unmatchedRAW_path = os.path.join(other_path, '03_unmatched_raws')
+
+        # copy_jpg() only creates edits_path when there's a copy to write into
+        # it, so a roll with no VCs would otherwise end up with no 04_edits
+        # folder -- and the prune step below (os.listdir(edits_path)) would
+        # then crash with FileNotFoundError. Create it upfront so the folder
+        # structure is consistent regardless of whether this roll has VCs.
+        if clean_edits and not os.path.exists(edits_path):
+            os.makedirs(edits_path)
 
         # Warn about raw files missing
         if roll.rawMissing:
