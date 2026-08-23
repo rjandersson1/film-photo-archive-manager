@@ -34,6 +34,8 @@
 import os
 import sys
 
+from datetime import datetime
+
 from tkinter import Tk
 from tkinter.filedialog import askdirectory
 
@@ -47,23 +49,110 @@ WARNING = 1
 ERROR = 1
 db = debuggerTool.debuggerTool(DEBUG, WARNING, ERROR)
 
+ROLL_FOLDER_ROOT = '/Users/rja/Photography/0_Working'
+LR_EXPORTS_ROOT = '/Users/rja/Desktop/export'
+VALID_EXPORT_EXTS = ('.jpg', '.jpeg', '.png')
+BATCH_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+# Files exported more than this many seconds apart are treated as separate
+# export batches, even when they live in the same folder (eg. loose files
+# dropped directly in LR_EXPORTS_ROOT from unrelated export sessions).
+BATCH_TIME_GAP_SECONDS = 600
+
 
 def pick_roll_folder():
     root = Tk()
     root.withdraw()
     root.attributes('-topmost', True)
-    folder = askdirectory(title='Select the roll folder to clean')
+    kwargs = {'title': 'Select the roll folder to clean'}
+    if os.path.isdir(ROLL_FOLDER_ROOT):
+        kwargs['initialdir'] = ROLL_FOLDER_ROOT
+    folder = askdirectory(**kwargs)
     root.destroy()
     return folder or None
 
 
-def pick_lr_exports_folder():
+def pick_lr_exports_folder(initialdir=None):
     root = Tk()
     root.withdraw()
     root.attributes('-topmost', True)
-    folder = askdirectory(title='Select the fresh Lightroom exports folder')
+    kwargs = {'title': 'Select the fresh Lightroom exports folder'}
+    if initialdir and os.path.isdir(initialdir):
+        kwargs['initialdir'] = initialdir
+    folder = askdirectory(**kwargs)
     root.destroy()
     return folder or None
+
+
+def _scan_batch(path, recursive, valid_exts):
+    """Returns [(filename, mtime), ...] for image files directly in path
+    (recursive=False) or anywhere under it (recursive=True)."""
+    files = []
+    walker = os.walk(path) if recursive else [(path, [], os.listdir(path))]
+    for dirpath, _, filenames in walker:
+        for f in filenames:
+            if not f.lower().endswith(valid_exts) or f.startswith('._'):
+                continue
+            mtime = os.path.getmtime(os.path.join(dirpath, f))
+            files.append((f, mtime))
+    return files
+
+
+def cluster_by_time(files, gap_seconds=BATCH_TIME_GAP_SECONDS):
+    """
+    Splits [(filename, mtime), ...] into export batches: sorted newest-first,
+    a new batch starts wherever the gap to the next-newest file exceeds
+    gap_seconds. Returns a list of batches (each a list of (filename,
+    mtime)), most recent batch first. Files exported within the same
+    Lightroom session land in one batch even if a folder mixes several
+    sessions' loose files together.
+    """
+    if not files:
+        return []
+    ordered = sorted(files, key=lambda e: e[1], reverse=True)
+    clusters = [[ordered[0]]]
+    for entry in ordered[1:]:
+        if clusters[-1][-1][1] - entry[1] <= gap_seconds:
+            clusters[-1].append(entry)
+        else:
+            clusters.append([entry])
+    return clusters
+
+
+def find_most_recent_batch(export_root, valid_exts=VALID_EXPORT_EXTS):
+    """
+    Groups files under export_root by location -- the loose files sitting
+    directly in export_root form one location, and each immediate
+    subdirectory (Lightroom's own numbered re-export folders) forms another
+    -- and returns the location with the most recently modified file, as
+    (path, files, latest_mtime) where files is [(filename, mtime), ...] for
+    every image file in that location. Returns None if export_root doesn't
+    exist or has no image files anywhere.
+
+    A single location can still mix multiple time-separated export batches
+    (eg. loose files from several unrelated sessions sitting directly in
+    export_root) -- use cluster_by_time() on the returned files to split
+    those apart for display/confirmation.
+    """
+    if not os.path.isdir(export_root):
+        return None
+
+    locations = []
+
+    files = _scan_batch(export_root, recursive=False, valid_exts=valid_exts)
+    if files:
+        locations.append((max(m for _, m in files), export_root, files))
+
+    for entry in os.scandir(export_root):
+        if entry.is_dir():
+            files = _scan_batch(entry.path, recursive=True, valid_exts=valid_exts)
+            if files:
+                locations.append((max(m for _, m in files), entry.path, files))
+
+    if not locations:
+        return None
+
+    latest, path, files = max(locations, key=lambda b: b[0])
+    return path, files, latest
 
 
 def prompt_yes_no(question, default=True):
@@ -106,7 +195,37 @@ def sync_lr_exports(importer, folder):
         db.w('[C]', 'No existing 02_exports folder -- skipping LR-exports sync.', folder)
         return
 
-    lr_exports_folder = pick_lr_exports_folder()
+    detected = find_most_recent_batch(LR_EXPORTS_ROOT)
+    if detected:
+        batch_path, batch_files, batch_mtime = detected
+        clusters = cluster_by_time(batch_files)
+        most_recent = clusters[0]
+        when = datetime.fromtimestamp(batch_mtime).strftime(BATCH_TIME_FORMAT)
+
+        print(f'\nMost recent export location detected:')
+        print(f'  {batch_path}')
+        print(f'  {len(batch_files)} image files total, last modified {when}')
+        print(f'  {len(clusters)} export batch{"es" if len(clusters) != 1 else ""} identified by time (>{BATCH_TIME_GAP_SECONDS // 60}min gap)')
+        print(f'\nMost recent batch ({len(most_recent)} files):')
+        for f, _ in sorted(most_recent):
+            print(f'  {f}')
+        if len(clusters) > 1:
+            print(f'\nNote: this folder mixes {len(clusters)} time-separated batches -- if you '
+                  f'only want the most recent one, clean up the older files before syncing.')
+
+        if prompt_yes_no('Use this as the fresh exports folder?', default=True):
+            lr_exports_folder = batch_path
+            # Only the most recent time-cluster, even if batch_path (eg. loose
+            # files in LR_EXPORTS_ROOT) also holds older, unrelated batches.
+            lr_exports_filenames = [f for f, _ in most_recent]
+        else:
+            lr_exports_folder = pick_lr_exports_folder(initialdir=LR_EXPORTS_ROOT)
+            lr_exports_filenames = None
+    else:
+        db.w('[C]', 'No export batches found under', LR_EXPORTS_ROOT)
+        lr_exports_folder = pick_lr_exports_folder(initialdir=LR_EXPORTS_ROOT)
+        lr_exports_filenames = None
+
     if not lr_exports_folder:
         db.w('[C]', 'No LR-exports folder selected, skipping sync.')
         return
@@ -120,9 +239,12 @@ def sync_lr_exports(importer, folder):
         db.e('[C]', 'LR-exports folder overlaps the roll folder, aborting sync to avoid data loss:', lr_exports_folder)
         return
 
-    valid_exts = ('.jpg', '.jpeg', '.png')
-    new_count = len([f for f in os.listdir(lr_exports_folder)
-                      if f.lower().endswith(valid_exts) and not f.startswith('._')])
+    if lr_exports_filenames is not None:
+        new_count = len([f for f in lr_exports_filenames
+                          if f.lower().endswith(VALID_EXPORT_EXTS) and not f.startswith('._')])
+    else:
+        new_count = len([f for f in os.listdir(lr_exports_folder)
+                          if f.lower().endswith(VALID_EXPORT_EXTS) and not f.startswith('._')])
     if new_count == 0:
         db.e('[C]', 'No image files found in LR-exports folder, aborting sync:', lr_exports_folder)
         return
@@ -143,7 +265,7 @@ def sync_lr_exports(importer, folder):
     # copies by dateExposed, so stale 04_edits content would corrupt VC
     # grouping on this run.
     importer.clear_folder(edits_path)
-    importer.sync_folder_from_source(lr_exports_folder, exports_path, extensions=valid_exts)
+    importer.sync_folder_from_source(lr_exports_folder, exports_path, extensions=VALID_EXPORT_EXTS, filenames=lr_exports_filenames)
     db.i('[C]', f'Synced {new_count} files from LR-exports into 02_exports.', exports_path)
 
 
