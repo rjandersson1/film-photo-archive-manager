@@ -18,7 +18,7 @@ db = debuggerTool(DEBUG, WARNING, ERROR)
 
 # Preview generation settings
 PREVIEW_SIZE_PX = 3840  # preview px dimensions
-PREVIEW_DIMENSION_TARGET = 'h'  # {'v', 'h'} v = vertical, h = horizontal
+PREVIEW_DIMENSION_TARGET = 's'  # {'v', 'h', 's'} v = vertical, h = horizontal, s = smallest side
 
 class importTool:
     def __init__(self):
@@ -156,19 +156,29 @@ class importTool:
 
 
     def generate_preview(self, img, path):
-        # Generate a preview image scaled so its horizontal ('h') or vertical
-        # ('v') dimension equals PREVIEW_SIZE_PX, regardless of the source
-        # image's own orientation. Tune PREVIEW_SIZE_PX / PREVIEW_DIMENSION_TARGET
-        # at the top of this file to trade off quality vs. filesize.
+        # Generate a preview image scaled so its horizontal ('h'), vertical
+        # ('v'), or smallest ('s') dimension equals PREVIEW_SIZE_PX. 'h'/'v'
+        # target a fixed dimension regardless of the source image's own
+        # orientation; 's' instead matches whichever side is smaller (e.g. a
+        # 6000x1000 panorama with PREVIEW_SIZE_PX=720 becomes 4320x720).
+        # Tune PREVIEW_SIZE_PX / PREVIEW_DIMENSION_TARGET at the top of this
+        # file to trade off quality vs. filesize.
         image = img.filePath
         width, height = Image.open(image).size
 
         if PREVIEW_DIMENSION_TARGET == 'h':
             new_width = PREVIEW_SIZE_PX
             new_height = int(PREVIEW_SIZE_PX / width * height)
-        else:
+        elif PREVIEW_DIMENSION_TARGET == 'v':
             new_height = PREVIEW_SIZE_PX
             new_width = int(PREVIEW_SIZE_PX / height * width)
+        else:  # 's' = smallest side
+            if width < height:
+                new_width = PREVIEW_SIZE_PX
+                new_height = int(PREVIEW_SIZE_PX / width * height)
+            else:
+                new_height = PREVIEW_SIZE_PX
+                new_width = int(PREVIEW_SIZE_PX / height * width)
 
         # Downscale image
         preview = Image.open(image)
