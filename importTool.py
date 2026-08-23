@@ -14,7 +14,11 @@ import renderTool
 DEBUG = 0
 WARNING = 1
 ERROR = 1
-db = debuggerTool(DEBUG, WARNING, ERROR) 
+db = debuggerTool(DEBUG, WARNING, ERROR)
+
+# Preview generation settings
+PREVIEW_SIZE_PX = 3840  # preview px dimensions
+PREVIEW_DIMENSION_TARGET = 'h'  # {'v', 'h'} v = vertical, h = horizontal
 
 class importTool:
     def __init__(self):
@@ -119,6 +123,12 @@ class importTool:
         # define dest path
         dest_path = os.path.join(dest_folder, new_name + os.path.splitext(src_path)[1]) # preserve original extension
 
+        # Already correctly named (eg. a copy whose only on-disk location is
+        # already dest_folder, unchanged since the last clean) -- copying it
+        # onto itself would raise shutil.SameFileError for no reason.
+        if os.path.abspath(src_path) == os.path.abspath(dest_path):
+            return
+
         try:
             # copy jpg
             shutil.copy2(src_path, dest_path)
@@ -146,20 +156,20 @@ class importTool:
 
 
     def generate_preview(self, img, path):
-        # Generate a preview image for the given image of {size} px on shortest side
+        # Generate a preview image scaled so its horizontal ('h') or vertical
+        # ('v') dimension equals PREVIEW_SIZE_PX, regardless of the source
+        # image's own orientation. Tune PREVIEW_SIZE_PX / PREVIEW_DIMENSION_TARGET
+        # at the top of this file to trade off quality vs. filesize.
         image = img.filePath
+        width, height = Image.open(image).size
 
-        # Calculate new size based on shortest side == {size}
-        dimensions = Image.open(image).size
-        size = max(dimensions) / 4
-        width, height = dimensions
-        if width < height:
-            new_width = size
-            new_height = int((size / width) * height)
+        if PREVIEW_DIMENSION_TARGET == 'h':
+            new_width = PREVIEW_SIZE_PX
+            new_height = int(PREVIEW_SIZE_PX / width * height)
         else:
-            new_height = size
-            new_width = int((size / height) * width)
-        
+            new_height = PREVIEW_SIZE_PX
+            new_width = int(PREVIEW_SIZE_PX / height * width)
+
         # Downscale image
         preview = Image.open(image)
         preview.thumbnail((new_width, new_height))
@@ -597,13 +607,22 @@ class importTool:
 
         progress_index = 0
 
-        # Previews/edits are fully derived output (no source-of-truth
-        # content) -- clear them first so a copy/VC dropped since the last
-        # run doesn't leave a stale file behind.
+        # Previews are fully derived output (no source-of-truth content) --
+        # clear them first so a copy/VC dropped since the last run doesn't
+        # leave a stale file behind.
+        #
+        # 04_edits is NOT the same kind of derived output once a roll has
+        # already been cleaned in place: find_image_dirs() (rollObj.py)
+        # scans 04_edits itself as the source directory for VC/copy images,
+        # so copy.filePath for every edit already points inside edits_path.
+        # Clearing edits_path here would delete that source before the loop
+        # below reads it back out via copy_jpg(copy, edits_path) -- this is
+        # exactly the bug that destroyed a roll's edits (clear-then-copy-
+        # from-the-same-now-empty-directory). Instead, mirror the safe
+        # clean_jpg/exports_path pattern below: copy new-named files in
+        # alongside the existing ones, then prune stale names afterward.
         if clean_preview:
             self.clear_folder(previews_path)
-        if clean_edits:
-            self.clear_folder(edits_path)
 
         # Copy to directories
         for img in roll.images:
@@ -745,6 +764,18 @@ class importTool:
             for f in os.listdir(exports_path):
                 if f not in expected and not f.startswith('.'):
                     os.remove(os.path.join(exports_path, f))
+
+        # Same pattern as clean_jpg/exports_path above, for the same reason:
+        # copy_jpg(copy, edits_path) above copies each legacy/stale-named
+        # source jpg to its renamed destination WITHIN the same 04_edits
+        # folder without removing the original -- prune those now-redundant
+        # names now that every copy has succeeded.
+        if clean_edits:
+            expected = {self.get_photo_name(copy) + os.path.splitext(copy.filePath)[1]
+                        for img in roll.images for copy in img.copies}
+            for f in os.listdir(edits_path):
+                if f not in expected and not f.startswith('.'):
+                    os.remove(os.path.join(edits_path, f))
 
         # Progress update
         db.progress(
