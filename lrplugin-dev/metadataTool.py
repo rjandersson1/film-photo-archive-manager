@@ -5,6 +5,8 @@ import pyautogui
 import pyperclip
 import os
 from pathlib import Path
+from collections import defaultdict
+from contextlib import contextmanager
 from openpyxl import Workbook, load_workbook
 from pynput import keyboard
 from pynput.keyboard import Controller, Key
