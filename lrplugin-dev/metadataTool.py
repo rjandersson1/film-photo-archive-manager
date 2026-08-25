@@ -45,6 +45,91 @@ FIXED_LENS_CAMERA_IDS = {"RF3.5B", "ZOOM28", "UGO", "ACCZOOM", "PERKEO-II"}
 # ever has more entries than this.
 DROPDOWN_RESET_PRESSES = 6
 
+# Written by Importer.exportSelection() -- fixed path, same convention as
+# metadataTool's vc_manifest_path, since the Lua side has no way to know
+# which roll is currently being processed. Module-level (not tied to a
+# metadataTool instance) so importMetadata.py can read Lightroom's current
+# selection to auto-detect the roll BEFORE any xlsx/roll_root is known --
+# see read_lr_selection() below.
+SELECTION_MANIFEST_PATH = Path(__file__).parent / "selection_manifest.txt"
+
+
+def click_plugin_extras_menu_item(item_title):
+    """Clicks Library > Plug-in Extras > {item_title} via AppleScript/System Events.
+
+    item_title must match the RENDERED menu item name, not Info.lua's source
+    title -- Lightroom indents every plugin's menu items under an auto-inserted
+    plugin-name header at runtime, so eg. "JSON Import" is only reachable as
+    "   JSON Import" (3 leading spaces). Confirmed via a live accessibility
+    dump of the actual submenu -- see git history for the full diagnosis. A
+    newly added menu item's rendered indentation isn't guaranteed identical;
+    re-check with a live dump if a new item's clicks silently no-op."""
+
+    script = f'''
+    tell application "Adobe Lightroom Classic" to activate
+    delay 0.3
+    tell application "System Events"
+        tell process "Adobe Lightroom Classic"
+            click menu bar item "Library" of menu bar 1
+            delay 0.3
+            click menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+            delay 0.3
+            tell menu item "{item_title}" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
+                perform action "AXPress"
+            end tell
+            delay 0.3
+        end tell
+    end tell
+    '''
+
+    return subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+
+
+def read_lr_selection(timeout=5.0):
+    """Triggers Lightroom's read-only "Export Selection" Plug-in Extra
+    (Importer.exportSelection()) and reads back Lightroom's CURRENT selection
+    -- whatever's selected at the moment this runs, no selection change is
+    made here -- as an ordered list of (fileName, path) tuples.
+
+    Module-level, not a method: used both by metadataTool.verify_selection_
+    filenames() (checking the final selection against a loaded xlsx) and by
+    importMetadata.py (auto-detecting which roll is currently selected,
+    before any xlsx is even chosen).
+
+    Returns None, with an explanatory message already printed, if the menu
+    click fails or the manifest doesn't show up within timeout seconds."""
+
+    SELECTION_MANIFEST_PATH.write_text("")
+
+    result = click_plugin_extras_menu_item("   Export Selection")
+
+    if result.returncode != 0:
+        print("=" * 70)
+        print("ERROR: 'Export Selection' menu click failed -- could not read back")
+        print("Lightroom's current selection.")
+        print(result.stderr.strip())
+        print('Check that Library > Plug-in Extras > "Export Selection" exists in')
+        print('the menu (Plug-in Manager > NLP Importer must be enabled).')
+        print("=" * 70)
+        return None
+
+    # Read-only filename export -- no catalog-wide scan like JSON Import
+    # does, so (unlike apply_lrplugin's wait-for-Enter) a short poll for
+    # the file to be written is reliable instead of needing a keypress.
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        text = SELECTION_MANIFEST_PATH.read_text().strip()
+        if text:
+            rows = []
+            for line in text.split("\n"):
+                fname, _, path = line.partition("\t")
+                rows.append((fname, path))
+            return rows
+        time.sleep(0.1)
+
+    print("ERROR: Timed out waiting for selection_manifest.txt from Lightroom.")
+    return None
+
 
 class metadataTool:
 
@@ -705,6 +790,50 @@ class metadataTool:
         time.sleep(0.1)
 
 
+    def verify_selection_filenames(self):
+        """Preflight safeguard, run before ANY field is touched: reads back the
+        filenames Lightroom currently has selected (via the read-only "Export
+        Selection" Plug-in Extra -- Importer.exportSelection()) and compares
+        them, in on-screen order, against self.data's expected fileName
+        sequence. run_metadata()/apply_lrplugin() apply rows POSITIONALLY, so a
+        stale, wrong, or misordered filmstrip selection would otherwise paste
+        frame N's metadata onto the wrong photo with no undo. Returns True and
+        proceeds only on an exact match; otherwise prints the mismatch, sets
+        stop_flag, and returns False without Lightroom being touched."""
+
+        db.d("Stage: verify Lightroom selection matches expected filenames")
+
+        self.ensure_library_module()
+
+        # select all -- no need to deselect first, cmd+a replaces the prior
+        # selection regardless of its state.
+        self.hotkey("cmd", "a")
+        time.sleep(0.4)
+
+        rows = read_lr_selection()
+        if rows is None:
+            self.stop_flag = True
+            return False
+
+        actual = [fname for fname, _path in rows]
+        expected = [record["fileName"] for record in self.data]
+
+        if actual != expected:
+            print("=" * 70)
+            print("ERROR: Lightroom's selected photos don't match the roll's metadata xlsx.")
+            print(f"  expected ({len(expected)}): {expected}")
+            print(f"  selected ({len(actual)}): {actual}")
+            print("Check that the roll is in Quick Collection, sorted by filename")
+            print("ascending, with every frame (and only those frames) selected.")
+            print("Nothing was written to Lightroom.")
+            print("=" * 70)
+            self.stop_flag = True
+            return False
+
+        db.d(f"Selection verified: {len(actual)} photo(s) match expected order.")
+        return True
+
+
     def apply_lrplugin(self):
 
         db.d("Stage: apply Lightroom plugin")
@@ -723,39 +852,13 @@ class metadataTool:
         # the write actually succeeds.
         self.vc_manifest_path.write_text("")
 
-        # Menu item title/hierarchy: Library > Plug-in Extras > "   JSON Import" (3 leading
-        # spaces -- Lightroom renders it indented under an auto-inserted "NLP Importer"
-        # plugin-name header at runtime; Info.lua's source title has no spaces, but that
-        # doesn't reflect the rendered/queryable name). Confirmed via a live accessibility
-        # dump of the actual submenu -- see git history for the full diagnosis.
-        script = '''
-        tell application "Adobe Lightroom Classic" to activate
-        delay 0.3
-        tell application "System Events"
-            tell process "Adobe Lightroom Classic"
-                click menu bar item "Library" of menu bar 1
-                delay 0.3
-                click menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
-                delay 0.3
-                tell menu item "   JSON Import" of menu 1 of menu item "Plug-in Extras" of menu 1 of menu bar item "Library" of menu bar 1
-                    perform action "AXPress"
-                end tell
-                delay 0.3
-            end tell
-        end tell
-        '''
-
         # This is the step that actually applies Sublocation/City/State/Country/
         # Intellectual Genre/Scene/dateCreated (everything in each record's "standard"
         # block) -- it was previously run with stdout/stderr sent to DEVNULL and no
         # returncode check, so a failed menu click (eg. Lightroom not frontmost, or the
         # custom lrplugin-dev plugin not installed/enabled) looked identical to success:
         # nothing printed, script kept going, and none of that metadata ever landed.
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True
-        )
+        result = click_plugin_extras_menu_item("   JSON Import")
 
         if result.returncode != 0:
             print("=" * 70)
@@ -872,6 +975,9 @@ class metadataTool:
         db.d("Stage: run macro")
 
         print("\nPress ESC anytime to stop\n")
+
+        if not self.verify_selection_filenames():
+            return
 
         # Skip the manual calibration prompts entirely once all five positions
         # are hardcoded above -- only fall back to calibrate() (which re-prompts
