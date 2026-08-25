@@ -1,5 +1,7 @@
 import time
 import json
+import csv
+import tempfile
 import threading
 import pyautogui
 import pyperclip
@@ -1145,13 +1147,20 @@ class metadataTool:
 
 
     def apply_exif_dates(self):
+        """Batched replacement for the old one-exiftool-process-per-image loop
+        -- same net effect (check each raw file's current DateTimeOriginal,
+        write corrected values only where they differ, refresh Lightroom if
+        anything changed), but the check and the write are each a single
+        exiftool invocation covering every image, not N invocations. Process
+        spawn overhead dominated the old per-file cost (see
+        apply_exif_dates:exiftool_check/:exiftool_write in early diagnostics
+        runs), so batching beats parallelizing N single-file calls -- it cuts
+        the number of processes started instead of just overlapping them."""
 
         db.d("Stage: apply EXIF DateTimeOriginal")
 
-        changed_any = False
-
+        candidates = []  # (i, raw_path, dt_original)
         for i, record in enumerate(self.data, start=1):
-
             raw_path = record.get("rawFilePath")
             exif_block = record.get("exif", {})
             dt_original = exif_block.get("dateTimeOriginal")
@@ -1160,43 +1169,85 @@ class metadataTool:
                 db.d(f"Skip EXIF date {i}: missing rawFilePath or dateTimeOriginal")
                 continue
 
-            # check current EXIF datetime first
-            check_cmd = [
-                "exiftool",
-                "-s3",
-                "-DateTimeOriginal",
-                raw_path
-            ]
+            candidates.append((i, raw_path, dt_original))
 
-            with self._timed("apply_exif_dates:exiftool_check"):
-                check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+        if not candidates:
+            db.d("No EXIF date changes needed; Lightroom refresh skipped")
+            return
 
-            if check_result.returncode != 0:
-                db.d(f"ExifTool read error on {raw_path}: {check_result.stderr.strip()}")
+        # Batch read: mirrors rollObj.py's fetch_exif() -- one JSON call for
+        # every candidate, correlated back to source files by "SourceFile"
+        # rather than by output order, since exiftool silently DROPS any file
+        # it couldn't read from the JSON array instead of erroring the whole
+        # batch (confirmed: a missing/corrupt file just isn't in the result).
+        raw_paths = [raw_path for _, raw_path, _ in candidates]
+        with self._timed("apply_exif_dates:exiftool_check_batch"):
+            check_result = subprocess.run(
+                ["exiftool", "-j", "-fast2", "-DateTimeOriginal", *raw_paths],
+                capture_output=True, text=True
+            )
+
+        try:
+            current_by_path = {
+                rec["SourceFile"]: rec.get("DateTimeOriginal", "")
+                for rec in json.loads(check_result.stdout or "[]")
+            }
+        except json.JSONDecodeError:
+            db.d(f"ExifTool batch read produced no usable JSON: {check_result.stderr.strip()}")
+            current_by_path = {}
+
+        to_write = []  # (i, raw_path, xmp_path, dt_original)
+        for i, raw_path, dt_original in candidates:
+            if raw_path not in current_by_path:
+                db.d(f"ExifTool read error on {raw_path}: not returned by batch read ({check_result.stderr.strip()})")
                 continue
 
-            current_dt = check_result.stdout.strip()
-
-            if current_dt == dt_original:
+            if current_by_path[raw_path] == dt_original:
                 db.d(f"Skip EXIF date {i}/{len(self.data)}: already correct")
                 continue
 
-            xmp_path = Path(raw_path).with_suffix(".xmp")
+            to_write.append((i, raw_path, Path(raw_path).with_suffix(".xmp"), dt_original))
 
-            cmd = [
-            "exiftool",
-            f"-DateTimeOriginal={dt_original}",
-            f"-CreateDate={dt_original}",
-            f"-ModifyDate={dt_original}",
-            "-overwrite_original",
-            str(xmp_path)
-            ]
+        if not to_write:
+            db.d("No EXIF date changes needed; Lightroom refresh skipped")
+            return
 
-            with self._timed("apply_exif_dates:exiftool_write"):
-                result = subprocess.run(cmd, capture_output=True, text=True)
+        # Batch write: one exiftool call for every sidecar that needs a new
+        # date, via a CSV of per-file values -- confirmed exiftool applies
+        # each row's tags to its own SourceFile within a single invocation
+        # (different files can get different values in the same call). The
+        # CSV's SourceFile column must match the path string handed to
+        # exiftool on the command line exactly, or the row won't match.
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
+            csv_path = f.name
+            writer = csv.writer(f)
+            writer.writerow(["SourceFile", "DateTimeOriginal", "CreateDate", "ModifyDate"])
+            for _, _, xmp_path, dt_original in to_write:
+                writer.writerow([str(xmp_path), dt_original, dt_original, dt_original])
 
-            if result.returncode != 0:
-                db.d(f"ExifTool write error on {raw_path}: {result.stderr.strip()}")
+        try:
+            with self._timed("apply_exif_dates:exiftool_write_batch"):
+                write_result = subprocess.run(
+                    ["exiftool", f"-csv={csv_path}", "-overwrite_original",
+                     *[str(xmp_path) for _, _, xmp_path, _ in to_write]],
+                    capture_output=True, text=True
+                )
+        finally:
+            os.unlink(csv_path)
+
+        # exiftool's returncode is nonzero if ANY file in the batch failed,
+        # even when most succeeded -- so per-file success/failure is read from
+        # stderr's "Error: ... - <path>" lines, not from the returncode alone
+        # (confirmed: files with no error still get written in the same run).
+        failed_paths = set()
+        for line in write_result.stderr.splitlines():
+            if line.startswith("Error:") and " - " in line:
+                failed_paths.add(line.rsplit(" - ", 1)[-1].strip())
+
+        changed_any = False
+        for i, raw_path, xmp_path, _ in to_write:
+            if str(xmp_path) in failed_paths:
+                db.d(f"ExifTool write error on {raw_path}: see stderr above ({xmp_path})")
             else:
                 db.d(f"EXIF date set {i}/{len(self.data)}: {raw_path}")
                 changed_any = True
