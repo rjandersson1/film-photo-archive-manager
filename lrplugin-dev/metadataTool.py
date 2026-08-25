@@ -139,13 +139,16 @@ class metadataTool:
 
         self.ignore_esc = False
 
-        self.delay_default = 0.002
-        self.delay_keypress = 0.002
-        self.delay_paste = 0.01 # stability issues for < ~0.01
-        self.delay_clipboard_release = 0.075*1.5 # stability issues for < ~0.075
-        self.delay_finish_image = 0.4 # stability issues for < ~0.3
-        self.delay_start = 0.0
-        self.delay_mousemove = 0.05
+        self.delay_default = 0.002       # generic gap after a hotkey() combo
+        self.delay_keypress = 0.002      # generic gap after a single press()
+        self.delay_paste = 0.01          # gap between copy/select-all/paste within one field; unstable < ~0.01
+        self.delay_clipboard_release = 0.15  # gap after a field's paste, before the next field's clipboard write; unstable < ~0.075
+        self.delay_finish_image = 0.1    # settle after advancing to the next image in the per-image loop (real decode/render)
+        self.delay_field_close = 0.0375  # settle after exiting field-edit mode with no image navigation (apply_shared_nlp_metadata only)
+        self.delay_dropdown_deselect_settle = 0.2  # settle after apply_dropdown_fields()'s closing "up" (collapses roll-wide selection to one image)
+        self.delay_dropdown_confirm = 0.4  # settle before/after confirming a dropdown entry with enter; not yet frame-trace-tuned
+        self.delay_start = 0.0           # pause before the per-image loop begins
+        self.delay_mousemove = 0.05      # settle after moving the mouse, before clicking
 
         # Runtime diagnostics: label -> [call_count, total_seconds]. Filled in by
         # _sleep()/_timed() as the run progresses, printed by print_diagnostics()
@@ -800,8 +803,7 @@ class metadataTool:
         # Dropdown/combo-box fields need visibly more time than a text field to
         # register and redraw each arrow-key move -- press()'s normal ~0.004s
         # gap (used everywhere else, eg. tab-through paste fields) is too fast
-        # here and keystrokes get dropped/miscounted. self.delay_keypresss is dropdown-only;
-        # press() itself is unchanged for every other caller.
+        # here and keystrokes get dropped/miscounted.
         for _ in range(DROPDOWN_RESET_PRESSES):
             self.press("up")
             self._sleep(self.delay_keypress, "select_dropdown:reset_gap")
@@ -810,9 +812,9 @@ class metadataTool:
             self.press("down")
             self._sleep(self.delay_keypress, "select_dropdown:down_gap")
 
-        self._sleep(self.delay_keypress*200, "select_dropdown:pre_enter")
+        self._sleep(self.delay_dropdown_confirm, "select_dropdown:pre_enter")
         self.press("enter")
-        self._sleep(self.delay_keypress*200, "select_dropdown:post_enter")
+        self._sleep(self.delay_dropdown_confirm, "select_dropdown:post_enter")
 
 
     def verify_selection_filenames(self):
@@ -1092,14 +1094,8 @@ class metadataTool:
 
                 db.d(f"Processed exposure {idx}/{len(self.data)}")
 
-                # NOTE: this repeats the SAME delay_finish_image sleep that
-                # finish_image() (called two lines up) already did -- see the
-                # "run:per_image_DUPLICATE_gap" line in the diagnostics report.
-                # Likely a free win if you're tuning for speed: cutting one of
-                # the two halves this per-image delay with no other change.
-                self._sleep(self.delay_finish_image, "run:per_image_DUPLICATE_gap")
-
         print("Finished JSON records")
+        time.sleep(0.5)  # give the last finish_image()'s ESC+click time to settle before the final print
 
     def print_diagnostics(self, total_elapsed):
         """Prints a breakdown of where run()'s wall-clock time actually went --
@@ -1315,7 +1311,7 @@ class metadataTool:
         # selected, so dropping to one photo and reselecting all a few lines
         # later was pure wasted deselect/reselect.
         self.press("esc")
-        self._sleep(self.delay_finish_image, "apply_shared_nlp_metadata:close_delay")
+        self._sleep(self.delay_field_close, "apply_shared_nlp_metadata:close_delay")
 
 
     # Dropdown entries in on-screen order, index 0 = first item (the item a
@@ -1453,13 +1449,11 @@ class metadataTool:
         if self.developedAt_pos is not None:
             self.select_dropdown(self.developedAt_pos, down=1)
 
-        # close metadata editing and return to single-image workflow
-        self.press("esc")
-        self._sleep(self.delay_finish_image, "apply_dropdown_fields:close_esc")
-        self.hotkey("cmd", "d")
-        self._sleep(self.delay_finish_image, "apply_dropdown_fields:close_deselect")
-        self.press("left")
-        self._sleep(self.delay_finish_image, "apply_dropdown_fields:close_left")
+        # close metadata editing and return to single-image workflow -- "up"
+        # collapses the roll-wide selection back down to a single image in one
+        # step (see delay_dropdown_deselect_settle's comment in __init__).
+        self.press("up")
+        self._sleep(self.delay_dropdown_deselect_settle, "apply_dropdown_fields:deselect_settle")
 
 
     def get_shared_nlp_fields(self, data):
