@@ -141,9 +141,10 @@ class metadataTool:
 
         self.delay_default = 0.002
         self.delay_keypress = 0.002
-        self.delay_paste = 0.075 # stability issues for < ~0.05
+        self.delay_paste = 0.01 # stability issues for < ~0.01
+        self.delay_clipboard_release = 0.075*1.5 # stability issues for < ~0.075
         self.delay_finish_image = 0.4 # stability issues for < ~0.3
-        self.delay_start = 0.2
+        self.delay_start = 0.0
         self.delay_mousemove = 0.05
 
         # Runtime diagnostics: label -> [call_count, total_seconds]. Filled in by
@@ -707,7 +708,10 @@ class metadataTool:
         self.hotkey("cmd", "a")
         self._sleep(self.delay_paste, "paste_text")
         self.hotkey("cmd", "v")
-        self._sleep(self.delay_paste, "paste_text")
+        # Guards the stale-clipboard race, not visible paste settle -- see
+        # delay_clipboard_release's comment in __init__. Tracked separately
+        # from the "paste_text" label above so diagnostics can distinguish it.
+        self._sleep(self.delay_clipboard_release, "paste_text:clipboard_release")
 
     def calibrate(self):
 
