@@ -139,9 +139,17 @@ class metadataTool:
 
         self.delay_default = 0.002
         self.delay_keypress = 0.002
-        self.delay_paste = 0.1 # stability issues for < ~0.05
+        self.delay_paste = 0.075 # stability issues for < ~0.05
         self.delay_finish_image = 0.4 # stability issues for < ~0.3
         self.delay_start = 0.2
+        self.delay_mousemove = 0.05
+
+        # Runtime diagnostics: label -> [call_count, total_seconds]. Filled in by
+        # _sleep()/_timed() as the run progresses, printed by print_diagnostics()
+        # at the end of run() so the delays above can be tuned against real
+        # measurements instead of guesswork.
+        self.timings = defaultdict(lambda: [0, 0.0])
+        self.images_processed = 0
 
         self.accept_event = threading.Event()
         # Separate from accept_event -- apply_lrplugin() waits for an actual
@@ -150,7 +158,6 @@ class metadataTool:
         # for calibration capture elsewhere.
         self.enter_event = threading.Event()
         self.stop_flag = False
-
         self.acceptButton = "."
         self.pause_field = False
         self.pause_nextImage = False
@@ -606,6 +613,29 @@ class metadataTool:
         if hasattr(key, "char") and key.char == self.acceptButton:
             self.accept_event.set()
 
+    def _sleep(self, seconds, label):
+        """time.sleep() wrapper that tallies where fixed delays go, for
+        print_diagnostics(). Tallies the requested duration (not measured wall
+        time) since the point is to report the *configured* delay values so
+        they can be tuned directly -- see print_diagnostics()."""
+        if seconds > 0:
+            time.sleep(seconds)
+        entry = self.timings[label]
+        entry[0] += 1
+        entry[1] += seconds
+
+    @contextmanager
+    def _timed(self, label):
+        """Measures actual wall-clock time of a block (menu clicks, subprocess
+        calls, human-wait pauses) for print_diagnostics()."""
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            entry = self.timings[label]
+            entry[0] += 1
+            entry[1] += time.perf_counter() - t0
+
     def press(self, key):
 
         key_map = {
@@ -628,14 +658,14 @@ class metadataTool:
             press_time = 0.2
 
         self.kb.press(k)
-        time.sleep(press_time)
+        self._sleep(press_time, "press:hold")
         self.kb.release(k)
 
         if key == "esc":
-            time.sleep(0.05)
+            self._sleep(0.05, "press:esc_settle")
             self.ignore_esc = False
 
-        time.sleep(self.delay_default)
+        self._sleep(self.delay_default*0, "press:trailing") # TIMESPEED: REDUCED TO ZERO
 
     def hotkey(self, *keys):
 
@@ -663,18 +693,7 @@ class metadataTool:
         for k in reversed(parsed[:-1]):
             self.kb.release(k)
 
-        time.sleep(self.delay_default)
-
-    def ensure_library_module(self):
-        # Both "Metadata" (top-level) and "Library > Plug-in Extras" are menus that only
-        # exist while Lightroom is in the Library module -- if the last thing the user did
-        # was e.g. Develop, those menu items genuinely aren't in the menu bar at all, which
-        # is exactly the "-1728 Can't get menu item" error we were seeing even though the
-        # menu path/title text is correct. Cmd+Option+1 is Lightroom Classic's fixed
-        # shortcut for "go to Library module" regardless of which module is active.
-        db.d("Stage: ensure Library module active")
-        self.hotkey("cmd", "alt", "1")
-        time.sleep(0.5)
+        self._sleep(self.delay_default, "hotkey")
 
     def paste_text(self, text):
 
@@ -682,11 +701,11 @@ class metadataTool:
             return
 
         pyperclip.copy(str(text))
-        time.sleep(self.delay_paste)
+        self._sleep(self.delay_paste, "paste_text")
         self.hotkey("cmd", "a")
-        time.sleep(self.delay_paste)
+        self._sleep(self.delay_paste, "paste_text")
         self.hotkey("cmd", "v")
-        time.sleep(self.delay_paste)
+        self._sleep(self.delay_paste, "paste_text")
 
     def calibrate(self):
 
@@ -730,9 +749,9 @@ class metadataTool:
     def run_metadata(self, record):
 
         pyautogui.moveTo(self.cameraMake_pos)
-        time.sleep(0.2)
+        self._sleep(self.delay_mousemove, "run_metadata:move")
         pyautogui.click()
-        time.sleep(0.2)
+        self._sleep(self.delay_keypress, "run_metadata:click")
 
         for field in self.fields:
 
@@ -768,9 +787,9 @@ class metadataTool:
         per dropdown -- cheap, since these run once per roll, not per image."""
 
         pyautogui.moveTo(pos)
-        time.sleep(0.2)
+        self._sleep(self.delay_mousemove, "select_dropdown:move")
         pyautogui.click()
-        time.sleep(0.2)
+        self._sleep(self.delay_keypress, "select_dropdown:click")
 
         # Dropdown/combo-box fields need visibly more time than a text field to
         # register and redraw each arrow-key move -- press()'s normal ~0.004s
@@ -779,15 +798,15 @@ class metadataTool:
         # press() itself is unchanged for every other caller.
         for _ in range(DROPDOWN_RESET_PRESSES):
             self.press("up")
-            time.sleep(self.delay_keypress)
+            self._sleep(self.delay_keypress, "select_dropdown:reset_gap")
 
         for _ in range(down):
             self.press("down")
-            time.sleep(self.delay_keypress)
+            self._sleep(self.delay_keypress, "select_dropdown:down_gap")
 
-        time.sleep(0.1)
+        self._sleep(self.delay_keypress*200, "select_dropdown:pre_enter")
         self.press("enter")
-        time.sleep(0.1)
+        self._sleep(self.delay_keypress*200, "select_dropdown:post_enter")
 
 
     def verify_selection_filenames(self):
@@ -803,14 +822,13 @@ class metadataTool:
 
         db.d("Stage: verify Lightroom selection matches expected filenames")
 
-        self.ensure_library_module()
-
         # select all -- no need to deselect first, cmd+a replaces the prior
         # selection regardless of its state.
         self.hotkey("cmd", "a")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "verify_selection_filenames:select_all_settle")
 
-        rows = read_lr_selection()
+        with self._timed("verify_selection_filenames:read_lr_selection"):
+            rows = read_lr_selection()
         if rows is None:
             self.stop_flag = True
             return False
@@ -838,14 +856,10 @@ class metadataTool:
 
         db.d("Stage: apply Lightroom plugin")
 
-        time.sleep(0.3)
-
-        self.ensure_library_module()
-
         # select all -- no need to deselect first, cmd+a replaces the prior
         # selection regardless of its state.
         self.hotkey("cmd", "a")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "apply_lrplugin:select_all_settle")
 
         # TEST ONLY -- pre-create empty so Importer.lua only ever writes to
         # (never creates) this path. Delete this line once we know whether
@@ -858,7 +872,8 @@ class metadataTool:
         # returncode check, so a failed menu click (eg. Lightroom not frontmost, or the
         # custom lrplugin-dev plugin not installed/enabled) looked identical to success:
         # nothing printed, script kept going, and none of that metadata ever landed.
-        result = click_plugin_extras_menu_item("   JSON Import")
+        with self._timed("apply_lrplugin:json_import_menu_click"):
+            result = click_plugin_extras_menu_item("   JSON Import")
 
         if result.returncode != 0:
             print("=" * 70)
@@ -890,10 +905,11 @@ class metadataTool:
 
         self.enter_event.clear()
 
-        while not self.enter_event.is_set():
-            if self.stop_flag:
-                return
-            time.sleep(0.01)
+        with self._timed("apply_lrplugin:HUMAN_WAIT_for_enter"):
+            while not self.enter_event.is_set():
+                if self.stop_flag:
+                    return
+                time.sleep(0.01)
 
         self.hotkey("cmd", "d")
         self.press("left")
@@ -954,7 +970,7 @@ class metadataTool:
         self.press("esc")
         self.press("b")
         self.press("left")
-        time.sleep(self.delay_finish_image)
+        self._sleep(self.delay_finish_image, "finish_image")
 
 
     def save_metadata_sidecars(self):
@@ -963,11 +979,11 @@ class metadataTool:
         # select all -- no need to deselect first, cmd+a replaces the prior
         # selection regardless of its state.
         self.hotkey("cmd", "a")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "save_metadata_sidecars:select_all_settle")
 
         # save metadata to files
         self.hotkey("cmd", "s")
-        time.sleep(0.5)
+        self._sleep(self.delay_keypress, "save_metadata_sidecars:save_settle")
 
 
     def run(self):
@@ -976,7 +992,17 @@ class metadataTool:
 
         print("\nPress ESC anytime to stop\n")
 
-        if not self.verify_selection_filenames():
+        run_t0 = time.perf_counter()
+        try:
+            self._run_body()
+        finally:
+            self.print_diagnostics(time.perf_counter() - run_t0)
+
+    def _run_body(self):
+
+        with self._timed("phase:verify_selection_filenames"):
+            ok = self.verify_selection_filenames()
+        if not ok:
             return
 
         # Skip the manual calibration prompts entirely once all five positions
@@ -993,69 +1019,127 @@ class metadataTool:
 
         if self.stop_flag:
             return
-        
 
-        self.save_metadata_sidecars()
 
-        self.apply_exif_dates()
+        with self._timed("phase:save_metadata_sidecars"):
+            self.save_metadata_sidecars()
 
-        if self.stop_flag:
-            return
-
-        self.apply_lrplugin()
+        with self._timed("phase:apply_exif_dates"):
+            self.apply_exif_dates()
 
         if self.stop_flag:
             return
 
-        self.apply_shared_nlp_metadata()
+        with self._timed("phase:apply_lrplugin"):
+            self.apply_lrplugin()
 
         if self.stop_flag:
             return
 
-        self.apply_dropdown_fields()
+        with self._timed("phase:apply_shared_nlp_metadata"):
+            self.apply_shared_nlp_metadata()
+
+        if self.stop_flag:
+            return
+
+        with self._timed("phase:apply_dropdown_fields"):
+            self.apply_dropdown_fields()
 
         if self.stop_flag:
             return
 
         print(f"Starting in {self.delay_start:.1f}s...")
-        time.sleep(self.delay_start*2)
+        self._sleep(self.delay_start*2, "run:start_delay")
 
         idx = 0
 
-        while idx < len(self.data):
-
-            if self.stop_flag:
-                break
-
-            record = self.data[idx]
-
-            # Shared/roll-wide nlp fields were already stripped out of every record by
-            # strip_shared_nlp_fields() (and already applied once via
-            # apply_shared_nlp_metadata()). If nothing unique is left for this image,
-            # skip the whole click-through-every-field-and-tab sequence in run_metadata()
-            # -- that's the per-image cost that was slowing this down for fields that are
-            # roll-wide statics anyway. Still call finish_image() so the filmstrip
-            # position advances and stays in sync with self.data.
-            nlp_block = record.get("nlp", {})
-            has_unique_data = any(v not in (None, "") for v in nlp_block.values())
-
-            if has_unique_data:
-                self.run_metadata(record)
+        with self._timed("phase:per_image_loop"):
+            while idx < len(self.data):
 
                 if self.stop_flag:
                     break
-            else:
-                db.d(f"Skip image {idx + 1}/{len(self.data)}: no unique (non-shared) metadata")
 
-            self.finish_image()
+                record = self.data[idx]
 
-            idx += 1
+                # Shared/roll-wide nlp fields were already stripped out of every record by
+                # strip_shared_nlp_fields() (and already applied once via
+                # apply_shared_nlp_metadata()). If nothing unique is left for this image,
+                # skip the whole click-through-every-field-and-tab sequence in run_metadata()
+                # -- that's the per-image cost that was slowing this down for fields that are
+                # roll-wide statics anyway. Still call finish_image() so the filmstrip
+                # position advances and stays in sync with self.data.
+                nlp_block = record.get("nlp", {})
+                has_unique_data = any(v not in (None, "") for v in nlp_block.values())
 
-            db.d(f"Processed exposure {idx}/{len(self.data)}")
+                if has_unique_data:
+                    self.run_metadata(record)
 
-            time.sleep(self.delay_finish_image)
+                    if self.stop_flag:
+                        break
+                else:
+                    db.d(f"Skip image {idx + 1}/{len(self.data)}: no unique (non-shared) metadata")
+
+                self.finish_image()
+
+                idx += 1
+                self.images_processed = idx
+
+                db.d(f"Processed exposure {idx}/{len(self.data)}")
+
+                # NOTE: this repeats the SAME delay_finish_image sleep that
+                # finish_image() (called two lines up) already did -- see the
+                # "run:per_image_DUPLICATE_gap" line in the diagnostics report.
+                # Likely a free win if you're tuning for speed: cutting one of
+                # the two halves this per-image delay with no other change.
+                self._sleep(self.delay_finish_image, "run:per_image_DUPLICATE_gap")
 
         print("Finished JSON records")
+
+    def print_diagnostics(self, total_elapsed):
+        """Prints a breakdown of where run()'s wall-clock time actually went --
+        phases (self._timed() blocks: menu clicks, subprocess calls, the
+        per-image loop, the human "click Enter" wait) and fixed delays
+        (self._sleep() calls, tallied by the requested duration of each). Run
+        with different self.delay_* values / DROPDOWN_RESET_PRESSES and diff
+        the two tables to see what actually moved."""
+
+        human_labels = {label for label in self.timings if "HUMAN_WAIT" in label}
+        phase_labels = {label for label in self.timings if label.startswith("phase:")}
+        sleep_labels = set(self.timings) - human_labels - phase_labels
+
+        human_total = sum(self.timings[l][1] for l in human_labels)
+        sleep_total = sum(self.timings[l][1] for l in sleep_labels)
+
+        print("\n" + "=" * 70)
+        print("TIMING DIAGNOSTICS")
+        print("=" * 70)
+        print(f"Total wall-clock:        {total_elapsed:6.1f}s")
+        print(f"Images processed:        {self.images_processed}"
+              + (f"  ({total_elapsed / self.images_processed:.2f}s/image overall)"
+                 if self.images_processed else ""))
+        print(f"Human wait (not tunable):{human_total:6.1f}s")
+        print(f"Tracked fixed delays:    {sleep_total:6.1f}s  "
+              f"({sleep_total / total_elapsed * 100:.0f}% of total)" if total_elapsed else "")
+
+        if phase_labels:
+            print("\n-- Phases (self._timed blocks) --")
+            for label in sorted(phase_labels, key=lambda l: -self.timings[l][1]):
+                count, total = self.timings[label]
+                print(f"  {label:<45} {total:7.2f}s  ({count} call(s), avg {total / count:.3f}s)")
+
+        if human_labels:
+            print("\n-- Human-wait pauses (excluded from 'tracked fixed delays' -- not tunable) --")
+            for label in sorted(human_labels, key=lambda l: -self.timings[l][1]):
+                count, total = self.timings[label]
+                print(f"  {label:<45} {total:7.2f}s  ({count} call(s))")
+
+        if sleep_labels:
+            print("\n-- Fixed delays, by call site (tunable -- see self.delay_* / literals) --")
+            for label in sorted(sleep_labels, key=lambda l: -self.timings[l][1]):
+                count, total = self.timings[label]
+                print(f"  {label:<45} {total:7.2f}s  ({count} call(s), avg {total / count:.4f}s)")
+
+        print("=" * 70 + "\n")
 
 
     def apply_exif_dates(self):
@@ -1082,7 +1166,8 @@ class metadataTool:
                 raw_path
             ]
 
-            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+            with self._timed("apply_exif_dates:exiftool_check"):
+                check_result = subprocess.run(check_cmd, capture_output=True, text=True)
 
             if check_result.returncode != 0:
                 db.d(f"ExifTool read error on {raw_path}: {check_result.stderr.strip()}")
@@ -1105,7 +1190,8 @@ class metadataTool:
             str(xmp_path)
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            with self._timed("apply_exif_dates:exiftool_write"):
+                result = subprocess.run(cmd, capture_output=True, text=True)
 
             if result.returncode != 0:
                 db.d(f"ExifTool write error on {raw_path}: {result.stderr.strip()}")
@@ -1124,15 +1210,13 @@ class metadataTool:
 
         db.d("Stage: Lightroom save/read metadata from files")
 
-        self.ensure_library_module()
-
         # select all -- no need to deselect first, cmd+a replaces the prior
         # selection regardless of its state.
         self.hotkey("cmd", "a")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "refresh_lr_metadata_from_files:select_all_settle")
 
         db.d("Stage: refresh -- waiting for selection to settle")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "refresh_lr_metadata_from_files:settle")
 
         # Menu item title: "Read Metadata from Files" (plural) -- Lightroom relabels this
         # command based on selection count (singular "...from File" for a single photo).
@@ -1154,11 +1238,12 @@ class metadataTool:
 
         db.d("Stage: refresh -- running AppleScript menu click")
 
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True
-        )
+        with self._timed("refresh_lr_metadata_from_files:menu_click"):
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True
+            )
 
         db.d("Stage: refresh -- menu click done")
 
@@ -1198,13 +1283,13 @@ class metadataTool:
         # select all -- no need to deselect first, cmd+a replaces the prior
         # selection regardless of its state.
         self.hotkey("cmd", "a")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "apply_shared_nlp_metadata:select_all_settle")
 
         # open metadata panel at calibrated field
         pyautogui.moveTo(self.cameraMake_pos)
-        time.sleep(0.2)
+        self._sleep(self.delay_mousemove, "apply_shared_nlp_metadata:move")
         pyautogui.click()
-        time.sleep(0.2)
+        self._sleep(self.delay_keypress, "apply_shared_nlp_metadata:click")
 
         for field in self.fields:
 
@@ -1224,7 +1309,7 @@ class metadataTool:
         # selected, so dropping to one photo and reselecting all a few lines
         # later was pure wasted deselect/reselect.
         self.press("esc")
-        time.sleep(self.delay_finish_image)
+        self._sleep(self.delay_finish_image, "apply_shared_nlp_metadata:close_delay")
 
 
     # Dropdown entries in on-screen order, index 0 = first item (the item a
@@ -1342,7 +1427,7 @@ class metadataTool:
         # regardless of prior selection state, so the deselect+redraw that used
         # to run here first was pure wasted time.
         self.hotkey("cmd", "a")
-        time.sleep(0.4)
+        self._sleep(self.delay_keypress, "apply_dropdown_fields:select_all_settle")
 
         # Film Format -- data-driven from cameralist.xlsx, skipped if unresolvable.
         if self.filmFormat_pos is not None:
@@ -1364,11 +1449,11 @@ class metadataTool:
 
         # close metadata editing and return to single-image workflow
         self.press("esc")
-        time.sleep(self.delay_finish_image)
+        self._sleep(self.delay_finish_image, "apply_dropdown_fields:close_esc")
         self.hotkey("cmd", "d")
-        time.sleep(self.delay_finish_image)
+        self._sleep(self.delay_finish_image, "apply_dropdown_fields:close_deselect")
         self.press("left")
-        time.sleep(self.delay_finish_image)
+        self._sleep(self.delay_finish_image, "apply_dropdown_fields:close_left")
 
 
     def get_shared_nlp_fields(self, data):
