@@ -14,11 +14,15 @@
 # confirmed to match.
 #
 # Workflow:
-#   1) prompt for roll index (same LIBRARY_PATH/index convention as newRoll.py) to pick
-#      the roll folder to work on
+#   1) pick the roll folder to work on -- auto-detected from whatever's currently
+#      selected in Lightroom (see detect_roll_from_lr_selection()) if that resolves to
+#      exactly one roll under LIBRARY_PATH; otherwise falls back to prompting for a roll
+#      index (same LIBRARY_PATH/index convention as newRoll.py), or -1 to browse for it
 #   2) SAFEGUARD: reconcile the xlsx's rawFileName rows against what's actually still in
 #      01_scans right now
-#   3) hand off to lrplugin-dev/metadataTool.py for the actual Lightroom automation
+#   3) hand off to lrplugin-dev/metadataTool.py for the actual Lightroom automation, which
+#      re-verifies the roll's expected filenames against whatever's actually selected in
+#      Lightroom before writing anything (see metadataTool.verify_selection_filenames())
 #
 # Usage:
 #   python importMetadata.py
@@ -27,10 +31,9 @@ import os
 import time
 import subprocess
 import importlib.util
-import threading
 
 from openpyxl import load_workbook
-from pynput import keyboard
+from tkinter import Tk, filedialog
 
 import collectionObj
 from newRoll import (
@@ -39,70 +42,17 @@ from newRoll import (
 )
 
 
-def wait_for_keypress(prompt, accept_key="."):
-    """Blocks until accept_key is pressed, via a global (system-wide) keyboard
-    listener -- same mechanism as metadataTool.calibrate()'s capture loop --
-    rather than input(), which only registers Enter while the terminal itself
-    is focused. This breakpoint sits right before Lightroom needs to be
-    focused (roll selected, sorted, all frames selected), so the old
-    input()-based prompt required an awkward terminal-focus -> Lightroom-focus
-    round trip right at the point Lightroom focus is what's actually needed."""
-
-    print(prompt)
-    print(f"Press <{accept_key}> to continue\n")
-
-    accept_event = threading.Event()
-
-    def on_press(key):
-        if hasattr(key, "char") and key.char == accept_key:
-            accept_event.set()
-
-    listener = keyboard.Listener(on_press=on_press)
-    listener.start()
-
-    accept_event.wait()
-
-    listener.stop()
-
-
 def activate_lightroom():
-    # Matches syncVCs.py's activate_lightroom() -- the terminal is
-    # frontmost right after typing the roll index, so any keystrokes meant
-    # for Lightroom (the selection reset below) would otherwise go nowhere
-    # useful until this runs first.
+    # Matches syncVCs.py's activate_lightroom() -- ensures Lightroom is
+    # frontmost before any Lightroom-focused automation runs, regardless of
+    # whether the roll was auto-detected from the current LR selection or
+    # typed at the terminal.
     subprocess.run(
         ["osascript", "-e", 'tell application "Adobe Lightroom Classic" to activate'],
         capture_output=True,
         text=True
     )
     time.sleep(0.3)
-
-
-def reset_selection_to_first(select_all_after=True):
-    # Deterministic starting selection regardless of whatever was selected
-    # before: select everything, then Up collapses that down to just the
-    # FIRST photo -- a fixed, known anchor point -- then (by default)
-    # re-selects everything from there, since the JSON Import step that
-    # follows the wait_for_keypress() breakpoint below needs every photo
-    # selected. Matches syncVCs.py's reset_selection_to_first() exactly.
-    kb = keyboard.Controller()
-
-    kb.press(keyboard.Key.cmd)
-    kb.press('a')
-    kb.release('a')
-    kb.release(keyboard.Key.cmd)
-    time.sleep(0.3)
-
-    kb.press(keyboard.Key.up)
-    kb.release(keyboard.Key.up)
-    time.sleep(0.3)
-
-    if select_all_after:
-        kb.press(keyboard.Key.cmd)
-        kb.press('a')
-        kb.release('a')
-        kb.release(keyboard.Key.cmd)
-        time.sleep(0.3)
 
 
 def find_roll_folder(library_path, index):
@@ -122,11 +72,44 @@ def find_roll_folder(library_path, index):
     return matches
 
 
+def browse_for_roll_folder():
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    folder = filedialog.askdirectory(
+        initialdir=LIBRARY_PATH,
+        title="Select roll folder"
+    )
+
+    root.destroy()
+
+    if folder == "":
+        return None
+
+    return folder
+
+
+def roll_index_from_folder_name(roll_root):
+    # Same "{index}_..." token convention as find_roll_folder() -- best-effort
+    # only, since a folder picked by hand isn't guaranteed to follow it.
+    name = os.path.basename(roll_root.rstrip('/'))
+    token = name.split('_')[0] if '_' in name else name.split(' - ')[0]
+    token = token.strip()
+    return int(token) if token.isdigit() else None
+
+
 def prompt_roll_folder():
     while True:
-        raw = input('Roll index: ').strip()
+        raw = input('Roll index (-1 to browse): ').strip()
+        if raw == '-1':
+            folder = browse_for_roll_folder()
+            if folder is None:
+                print('No folder selected.')
+                continue
+            return folder, roll_index_from_folder_name(folder)
         if not raw.isdigit():
-            print('Enter a numeric roll index.')
+            print('Enter a numeric roll index, or -1 to browse.')
             continue
         index = int(raw)
         matches = find_roll_folder(LIBRARY_PATH, index)
@@ -464,19 +447,74 @@ def merge_import_into_metadata(xlsx_path, collection):
         print(f'Merged Import -> Metadata: {merged_count} cell(s) filled, {conflict_count} conflict(s) resolved.')
 
 
-def load_metadata_tool_class():
+def load_metadata_tool_module():
     spec_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lrplugin-dev', 'metadataTool.py')
     spec = importlib.util.spec_from_file_location('lr_metadata_tool', spec_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.metadataTool
+    return module
+
+
+def idx_label(index):
+    return str(index).zfill(3) if index is not None else '???'
+
+
+def roll_root_from_raw_path(raw_path):
+    # A selected photo's raw file path looks like eg.
+    # "{LIBRARY_PATH}/012_2024-01-01_STK_CAM_Name/01_scans/DSC001.ARW" --
+    # the roll folder is just the first path segment below LIBRARY_PATH.
+    # Returns None if raw_path isn't under LIBRARY_PATH at all (a photo from
+    # some other part of the catalog).
+    try:
+        rel = os.path.relpath(raw_path, LIBRARY_PATH)
+    except ValueError:
+        return None
+    if rel.startswith('..') or rel == '.':
+        return None
+    top = rel.split(os.sep)[0]
+    candidate = os.path.join(LIBRARY_PATH, top)
+    return candidate if os.path.isdir(candidate) else None
+
+
+def detect_roll_from_lr_selection(lr_module):
+    """Best-effort auto-detect: reads whatever's CURRENTLY selected in
+    Lightroom (no selection change is made) via lr_module.read_lr_selection(),
+    and if every selected photo's raw file resolves to the SAME roll folder
+    under LIBRARY_PATH, returns (roll_root, index) for it -- skipping the
+    manual index prompt entirely. Falls back to (None, None) -- meaning
+    prompt_roll_folder() should run instead -- on anything ambiguous:
+    nothing selected, plugin not enabled, photos outside LIBRARY_PATH, or a
+    selection spanning more than one roll."""
+    rows = lr_module.read_lr_selection()
+    if not rows:
+        return None, None
+
+    roll_roots = {roll_root_from_raw_path(path) for _fname, path in rows}
+    roll_roots.discard(None)
+
+    if len(roll_roots) == 0:
+        print("Current Lightroom selection isn't under LIBRARY_PATH -- enter the roll index manually.")
+        return None, None
+    if len(roll_roots) > 1:
+        print(f'Current Lightroom selection spans {len(roll_roots)} different rolls -- enter the roll index manually.')
+        return None, None
+
+    roll_root = roll_roots.pop()
+    index = roll_index_from_folder_name(roll_root)
+    print(f'Auto-detected roll from current Lightroom selection: {os.path.basename(roll_root)}')
+    return roll_root, index
+
 
 def main():
     print(f'Importing metadata for library: {LIBRARY_PATH}')
-    roll_root, index = prompt_roll_folder()
+
+    lr_module = load_metadata_tool_module()
+
+    roll_root, index = detect_roll_from_lr_selection(lr_module)
+    if roll_root is None:
+        roll_root, index = prompt_roll_folder()
 
     activate_lightroom()
-    reset_selection_to_first(select_all_after=True)
 
     scans_path = os.path.join(roll_root, '01_scans')
 
@@ -493,7 +531,7 @@ def main():
     missing_on_disk, missing_in_xlsx, xlsx_count, disk_count = reconcile(xlsx_path, scans_path)
 
     if missing_on_disk or missing_in_xlsx:
-        print(f'\n[{str(index).zfill(3)}] Metadata xlsx and 01_scans are out of sync:')
+        print(f'\n[{idx_label(index)}] Metadata xlsx and 01_scans are out of sync:')
         print(f'  xlsx rows: {xlsx_count}')
         print(f'  raw files: {disk_count}')
         if missing_on_disk:
@@ -516,13 +554,9 @@ def main():
             print('Still mismatched after auto-fix -- aborting. Lightroom was not touched.')
             return
 
-    print(f'\n[{str(index).zfill(3)}] xlsx and 01_scans match ({xlsx_count} files). Proceeding to Lightroom import.')
-    wait_for_keypress(
-        'Make sure the roll is open in Quick Collection, sorted by filename ascending, '
-        'with all frames selected before this continues.'
-    )
+    print(f'\n[{idx_label(index)}] xlsx and 01_scans match ({xlsx_count} files). Proceeding to Lightroom import.')
 
-    MetadataTool = load_metadata_tool_class()
+    MetadataTool = lr_module.metadataTool
     tool = MetadataTool(xlsx_path=xlsx_path, raw_folder=scans_path)
     tool.pause_field = False
     tool.pause_nextImage = False
