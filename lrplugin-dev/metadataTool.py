@@ -24,11 +24,11 @@ class db:
 # If ANY of these is None, __init__ leaves the matching self.*_pos as None,
 # and run() falls back to running calibrate() (which re-prompts for and
 # re-captures all five together) -- see run().
-CAMERA_MAKE_POS = (2414, 528)
-FILM_FORMAT_POS = (2389, 633)
-SCAN_METHOD_POS = (2382, 882)
-PUSH_PULL_POS = (2381, 1021)
-DEVELOPED_AT_POS = (2386, 1040)
+CAMERA_MAKE_POS = (2374, 488)
+FILM_FORMAT_POS = (2388, 590)
+SCAN_METHOD_POS = (2391, 836)
+PUSH_PULL_POS = (2392, 977)
+DEVELOPED_AT_POS = (2390, 997)
 
 # Camera IDs (cameralist.xlsx's 'id' column) that don't have interchangeable
 # lenses -- CAM+LNS combining in Intellectual Genre doesn't make sense for
@@ -595,14 +595,16 @@ class metadataTool:
         # tab-through paste fields (self.fields); the four dropdown fields cannot
         # be reached by tabbing and are selected separately via select_dropdown().
         targets = [
-            ("cameraMake_pos", "Camera Make"),
-            ("filmFormat_pos", "Film Format"),
-            ("scanMethod_pos", "Scan Method"),
-            ("pushPull_pos", "Push-Pull"),
-            ("developedAt_pos", "Developed At"),
+            ("cameraMake_pos", "Camera Make", "CAMERA_MAKE_POS"),
+            ("filmFormat_pos", "Film Format", "FILM_FORMAT_POS"),
+            ("scanMethod_pos", "Scan Method", "SCAN_METHOD_POS"),
+            ("pushPull_pos", "Push-Pull", "PUSH_PULL_POS"),
+            ("developedAt_pos", "Developed At", "DEVELOPED_AT_POS"),
         ]
 
-        for attr, label in targets:
+        captured = []
+
+        for attr, label, const_name in targets:
 
             print("\nCALIBRATION")
             print(f"Move mouse to '{label}' field")
@@ -620,7 +622,11 @@ class metadataTool:
             pos = pyautogui.position()
             setattr(self, attr, pos)
 
-            print("Captured:", pos)
+            print(f"{const_name} = ({pos.x}, {pos.y})")
+            captured.append(f"{const_name} = ({pos.x}, {pos.y})")
+
+        print("\nPaste this into the constants block:\n")
+        print("\n".join(captured))
 
     def run_metadata(self, record):
 
