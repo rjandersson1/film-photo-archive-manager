@@ -197,6 +197,41 @@ local function checkDateMismatches(masterPhoto)
 end
 
 
+-- Read-only preflight check for importMetadata.py: writes the filename AND
+-- raw file path (tab-separated) of whatever's currently selected, in
+-- on-screen order, to a fixed manifest path -- no catalog write, no dialog.
+-- Two callers read this back:
+--   - metadataTool.verify_selection_filenames() compares the filename column
+--     against the roll's expected filename order BEFORE Importer.run()
+--     (above) touches a single field, so a stale/wrong/misordered filmstrip
+--     selection gets caught instead of silently pasting frame N's metadata
+--     onto the wrong photo.
+--   - importMetadata.py's roll auto-detect uses the path column (which
+--     encodes the roll folder) to figure out which roll is currently
+--     selected, before any roll index/xlsx is even chosen.
+function Importer.exportSelection()
+
+    local catalog = LrApplication.activeCatalog()
+    local selectedPhotos = catalog:getTargetPhotos() or {}
+
+    local manifestPath = "/Users/rja/Documents/Coding/film-photo-archive-manager/lrplugin-dev/selection_manifest.txt"
+    local manifestFile = io.open(manifestPath, "w")
+
+    if not manifestFile then
+        return
+    end
+
+    for _, photo in ipairs(selectedPhotos) do
+        local fileName = photo:getFormattedMetadata("fileName") or ""
+        local path = photo:getRawMetadata("path") or ""
+        manifestFile:write(fileName .. "\t" .. path .. "\n")
+    end
+
+    manifestFile:close()
+
+end
+
+
 function Importer.run()
 
     local catalog = LrApplication.activeCatalog()
