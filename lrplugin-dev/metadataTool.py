@@ -303,8 +303,27 @@ class metadataTool:
         wb = load_workbook(self.xlsx_path)
         ws = wb.active
 
+        # Seconds offset per row is driven by the Index column's order within
+        # each shooting date, NOT by physical row order in the sheet (which
+        # tracks rawFileName/scan order). If frames were scanned out of the
+        # real shooting sequence, the rows never get physically reordered --
+        # only Index is corrected by hand -- so grouping+sorting by Index here
+        # is what makes DateTimeOriginal come out chronological.
+        date_groups = {}
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            idx, raw, raw_path, year, month, day = row[:6]
+            if raw is None or not (year and month and day):
+                continue
+            key = f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+            date_groups.setdefault(key, []).append((row_num, idx))
+
+        sec_by_row = {}
+        for entries in date_groups.values():
+            entries.sort(key=lambda e: (e[1] is None, e[1]))
+            for sec, (row_num, _idx) in enumerate(entries):
+                sec_by_row[row_num] = sec
+
         data = []
-        date_counter = {}
         xlsx_updated = False
 
         for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -401,12 +420,7 @@ class metadataTool:
                 m = int(month)
                 d = int(day)
 
-                key = f"{y:04d}-{m:02d}-{d:02d}"
-
-                offset = date_counter.get(key, 0)
-                date_counter[key] = offset + 1
-
-                sec = offset
+                sec = sec_by_row[row_num]
 
                 date_created = f"{y:04d}-{m:02d}-{d:02d}T12:00:{sec:02d}Z"
 
