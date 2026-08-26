@@ -44,7 +44,7 @@ WARNING = 1
 ERROR = 1
 db = debuggerTool.debuggerTool(DEBUG, WARNING, ERROR)
 
-DEFAULT_LIBRARY_ROOT = '/Users/rja/Photography/0_Working/5_Done'
+ROLL_FOLDER_ROOT = '/Users/rja/Photography/0_Working'
 
 DEST_PREVIEWS = '/Users/rja/Library/Mobile Documents/com~apple~CloudDocs/photography/temp/film'
 DEST_CONTACT_MAIN = '/Users/rja/Library/Mobile Documents/com~apple~CloudDocs/photography/temp/contact sheets'
@@ -61,8 +61,8 @@ def pick_library_folder():
     root.withdraw()
     root.attributes('-topmost', True)
     kwargs = {'title': 'Select the library folder containing roll folders'}
-    if os.path.isdir(DEFAULT_LIBRARY_ROOT):
-        kwargs['initialdir'] = DEFAULT_LIBRARY_ROOT
+    if os.path.isdir(ROLL_FOLDER_ROOT):
+        kwargs['initialdir'] = ROLL_FOLDER_ROOT
     folder = askdirectory(**kwargs)
     root.destroy()
     return folder or None
@@ -91,6 +91,41 @@ def find_rolls(library_folder):
             continue
         rolls[index] = entry.path
     return rolls
+
+
+def find_most_recently_changed_roll(search_root=ROLL_FOLDER_ROOT):
+    """
+    Returns the roll folder, anywhere under search_root, whose contents were
+    most recently modified -- walking one level into each category folder
+    (eg. '1_Imports', '5_Done'), collecting roll folders the same way
+    find_rolls() does, and taking the newest file mtime found anywhere
+    inside each one (not just the roll folder's own mtime, since that only
+    changes when a file is added/removed directly in it -- most sync-
+    relevant activity, like previews/contact sheets landing in a subfolder,
+    wouldn't touch it). Returns None if search_root doesn't exist or no
+    roll folders were found anywhere under it.
+    """
+    if not os.path.isdir(search_root):
+        return None
+
+    best_path, best_mtime = None, -1
+    for category in os.scandir(search_root):
+        if not category.is_dir():
+            continue
+        for roll_path in find_rolls(category.path).values():
+            roll_mtime = os.path.getmtime(roll_path)
+            for dirpath, _, filenames in os.walk(roll_path):
+                for f in filenames:
+                    if f.startswith('._'):
+                        continue
+                    try:
+                        roll_mtime = max(roll_mtime, os.path.getmtime(os.path.join(dirpath, f)))
+                    except OSError:
+                        continue
+            if roll_mtime > best_mtime:
+                best_path, best_mtime = roll_path, roll_mtime
+
+    return best_path
 
 
 def parse_roll_spec(spec, available):
@@ -271,7 +306,33 @@ def execute_plan(plan):
     db.s('[S]', f'Synced {total} file(s).')
 
 
+def sync_rolls(roll_paths, indices):
+    db.i('[S]', f'Syncing {len(indices)} roll(s):', indices)
+
+    plan, skipped = build_sync_plan(roll_paths, indices)
+
+    if not review_plan(plan, skipped):
+        db.w('[S]', 'Cancelled by user.')
+        return
+
+    execute_plan(plan)
+
+
 def main():
+    most_recent_roll = find_most_recently_changed_roll()
+    if most_recent_roll:
+        print(f'\nMost recently changed roll folder found:\n  {most_recent_roll}')
+        if prompt_yes_no('Sync this roll?', default=True):
+            roll_paths = find_rolls(os.path.dirname(most_recent_roll))
+            index = next((i for i, p in roll_paths.items() if p == most_recent_roll), None)
+            if index is None:
+                db.e('[S]', 'Could not re-locate roll in its library folder:', most_recent_roll)
+                return
+            sync_rolls(roll_paths, [index])
+            return
+    else:
+        db.w('[S]', 'No roll folders found under', ROLL_FOLDER_ROOT)
+
     library_folder = pick_library_folder()
     if not library_folder:
         db.w('[S]', 'No library folder selected, aborting.')
@@ -285,15 +346,7 @@ def main():
     db.i('[S]', f'Found {len(roll_paths)} roll(s) in library folder:', library_folder)
 
     indices = prompt_roll_spec(sorted(roll_paths))
-    db.i('[S]', f'Syncing {len(indices)} roll(s):', indices)
-
-    plan, skipped = build_sync_plan(roll_paths, indices)
-
-    if not review_plan(plan, skipped):
-        db.w('[S]', 'Cancelled by user.')
-        return
-
-    execute_plan(plan)
+    sync_rolls(roll_paths, indices)
 
 
 if __name__ == '__main__':
