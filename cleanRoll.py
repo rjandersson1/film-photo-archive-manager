@@ -31,7 +31,11 @@
 #     export it to a separate library path instead, the way cleanRoll() always
 #     has, defaulting to newRoll.py's own staging path. 
 
+import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 
 from datetime import datetime
@@ -50,6 +54,10 @@ ERROR = 1
 db = debuggerTool.debuggerTool(DEBUG, WARNING, ERROR)
 
 ROLL_FOLDER_ROOT = '/Users/rja/Photography/0_Working'
+# Roll folders live one level down inside a category folder under
+# ROLL_FOLDER_ROOT (eg. '1_Imports/011_26-08-08_G200_P6X7_Cedar Breaks' or
+# '5_done/...'), and are always named starting with an integer index.
+ROLL_NAME_RE = re.compile(r'^\d+_')
 LR_EXPORTS_ROOT = '/Users/rja/Desktop/export'
 VALID_EXPORT_EXTS = ('.jpg', '.jpeg', '.png')
 BATCH_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
@@ -155,6 +163,76 @@ def find_most_recent_batch(export_root, valid_exts=VALID_EXPORT_EXTS):
     return path, files, latest
 
 
+def iter_roll_folders(search_root=ROLL_FOLDER_ROOT):
+    """
+    Yields every roll folder under search_root: one level down inside each
+    category folder (eg. '1_Imports', '5_done'), matching only folders
+    whose name starts with an integer index (eg.
+    '011_26-08-08_G200_P6X7_Cedar Breaks') -- ie. actual roll folders, not
+    stray files or non-roll subfolders a category folder might contain.
+    """
+    if not os.path.isdir(search_root):
+        return
+    for category in os.scandir(search_root):
+        if not category.is_dir():
+            continue
+        for roll in os.scandir(category.path):
+            if roll.is_dir() and ROLL_NAME_RE.match(roll.name):
+                yield roll.path
+
+
+def get_preserved_raw_filenames(file_paths):
+    """
+    Reads each JPG's embedded XMP-xmpMM:PreservedFileName tag via exiftool
+    -- the original RAW file's basename, written by Negative Lab Pro at
+    export time (see exposureObj._update_from_exif(), which relies on the
+    same tag). The export's own filenames are human-renamed (eg. '25-07-11
+    - 01 - Cedar Breaks - ... .jpg') and carry no relation to the RAW
+    basenames, so this is the only reliable way to identify the source RAW.
+    Returns {file_path: raw_filename_or_None}, or {} if exiftool isn't
+    available or file_paths is empty.
+    """
+    if not file_paths or not shutil.which('exiftool'):
+        return {}
+    cmd = ['exiftool', '-j', '-fast2', '-SourceFile', '-XMP-xmpMM:PreservedFileName'] + file_paths
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    try:
+        data = json.loads(result.stdout or '[]')
+    except json.JSONDecodeError:
+        return {}
+    return {entry.get('SourceFile'): entry.get('PreservedFileName') for entry in data}
+
+
+def find_matching_roll(batch_dir, batch_files, search_root=ROLL_FOLDER_ROOT):
+    """
+    Given the JPGs in a freshly-detected export batch, reads the original
+    RAW basename out of each one's PreservedFileName EXIF tag (see
+    get_preserved_raw_filenames()), then searches every roll folder under
+    search_root (see iter_roll_folders()) for RAW files in 01_scans whose
+    basename matches. Returns the best-matching roll folder path, or None
+    if no PreservedFileName tags were found or no roll's RAW files overlap
+    with the batch at all.
+    """
+    file_paths = [os.path.join(batch_dir, f) for f, _ in batch_files]
+    preserved = get_preserved_raw_filenames(file_paths)
+    raw_basenames = {os.path.basename(n) for n in preserved.values() if n}
+    if not raw_basenames:
+        db.w('[C]', 'No PreservedFileName EXIF tags found in export batch -- cannot match a roll automatically.')
+        return None
+
+    best_path, best_count = None, 0
+    for roll_path in iter_roll_folders(search_root):
+        scans_path = os.path.join(roll_path, '01_scans')
+        if not os.path.isdir(scans_path):
+            continue
+        scan_names = {f for f in os.listdir(scans_path) if not f.startswith('._')}
+        overlap = len(raw_basenames & scan_names)
+        if overlap > best_count:
+            best_path, best_count = roll_path, overlap
+
+    return best_path
+
+
 def prompt_yes_no(question, default=True):
     suffix = '[Y/n]' if default else '[y/N]'
     raw = input(f'{question} {suffix} ').strip().lower()
@@ -180,13 +258,53 @@ def prompt_export_path(default_path):
     return raw or default_path
 
 
-def sync_lr_exports(importer, folder):
+def pick_lr_export_batch():
     """
-    Refreshes folder/02_exports (and clears folder/04_edits) from a
-    freshly-picked Lightroom exports folder, so the roll parses the
-    CURRENT Lightroom state -- stale/renamed/deleted VCs from a previous
-    clean don't linger. Only applies to a roll that already has an
-    02_exports folder (an already-cleaned/in-place roll being refreshed).
+    Detects the most recent Lightroom export batch under LR_EXPORTS_ROOT and
+    confirms it with the user (falling back to a manual folder picker if
+    none is found or the detected one is rejected). Returns
+    (lr_exports_folder, lr_exports_filenames, batch_files) where
+    lr_exports_filenames is None when the folder was picked manually
+    (meaning "use everything in it") and batch_files is the raw
+    [(filename, mtime), ...] list for the chosen batch (empty when picked
+    manually, since roll-matching has nothing to go on in that case).
+    """
+    detected = find_most_recent_batch(LR_EXPORTS_ROOT)
+    if not detected:
+        db.w('[C]', 'No export batches found under', LR_EXPORTS_ROOT)
+        return pick_lr_exports_folder(initialdir=LR_EXPORTS_ROOT), None, []
+
+    batch_path, batch_files, batch_mtime = detected
+    clusters = cluster_by_time(batch_files)
+    most_recent = clusters[0]
+    when = datetime.fromtimestamp(batch_mtime).strftime(BATCH_TIME_FORMAT)
+
+    print(f'\nMost recent export location detected:')
+    print(f'  {batch_path}')
+    print(f'  {len(batch_files)} image files total, last modified {when}')
+    print(f'  {len(clusters)} export batch{"es" if len(clusters) != 1 else ""} identified by time (>{BATCH_TIME_GAP_SECONDS // 60}min gap)')
+    print(f'\nMost recent batch ({len(most_recent)} files):')
+    for f, _ in sorted(most_recent):
+        print(f'  {f}')
+    if len(clusters) > 1:
+        print(f'\nNote: this folder mixes {len(clusters)} time-separated batches -- if you '
+              f'only want the most recent one, clean up the older files before continuing.')
+
+    if prompt_yes_no('Use this as the fresh exports batch?', default=True):
+        # Only the most recent time-cluster, even if batch_path (eg. loose
+        # files in LR_EXPORTS_ROOT) also holds older, unrelated batches.
+        return batch_path, [f for f, _ in most_recent], most_recent
+
+    return pick_lr_exports_folder(initialdir=LR_EXPORTS_ROOT), None, []
+
+
+def apply_lr_exports_sync(importer, folder, lr_exports_folder, lr_exports_filenames):
+    """
+    Refreshes folder/02_exports (and clears folder/04_edits) from an
+    already-chosen Lightroom exports folder, so the roll parses the CURRENT
+    Lightroom state -- stale/renamed/deleted VCs from a previous clean don't
+    linger. Only applies to a roll that already has an 02_exports folder
+    (an already-cleaned/in-place roll being refreshed).
     """
     exports_path = os.path.join(folder, '02_exports')
     edits_path = os.path.join(folder, '04_edits')
@@ -194,37 +312,6 @@ def sync_lr_exports(importer, folder):
     if not os.path.isdir(exports_path):
         db.w('[C]', 'No existing 02_exports folder -- skipping LR-exports sync.', folder)
         return
-
-    detected = find_most_recent_batch(LR_EXPORTS_ROOT)
-    if detected:
-        batch_path, batch_files, batch_mtime = detected
-        clusters = cluster_by_time(batch_files)
-        most_recent = clusters[0]
-        when = datetime.fromtimestamp(batch_mtime).strftime(BATCH_TIME_FORMAT)
-
-        print(f'\nMost recent export location detected:')
-        print(f'  {batch_path}')
-        print(f'  {len(batch_files)} image files total, last modified {when}')
-        print(f'  {len(clusters)} export batch{"es" if len(clusters) != 1 else ""} identified by time (>{BATCH_TIME_GAP_SECONDS // 60}min gap)')
-        print(f'\nMost recent batch ({len(most_recent)} files):')
-        for f, _ in sorted(most_recent):
-            print(f'  {f}')
-        if len(clusters) > 1:
-            print(f'\nNote: this folder mixes {len(clusters)} time-separated batches -- if you '
-                  f'only want the most recent one, clean up the older files before syncing.')
-
-        if prompt_yes_no('Use this as the fresh exports folder?', default=True):
-            lr_exports_folder = batch_path
-            # Only the most recent time-cluster, even if batch_path (eg. loose
-            # files in LR_EXPORTS_ROOT) also holds older, unrelated batches.
-            lr_exports_filenames = [f for f, _ in most_recent]
-        else:
-            lr_exports_folder = pick_lr_exports_folder(initialdir=LR_EXPORTS_ROOT)
-            lr_exports_filenames = None
-    else:
-        db.w('[C]', 'No export batches found under', LR_EXPORTS_ROOT)
-        lr_exports_folder = pick_lr_exports_folder(initialdir=LR_EXPORTS_ROOT)
-        lr_exports_filenames = None
 
     if not lr_exports_folder:
         db.w('[C]', 'No LR-exports folder selected, skipping sync.')
@@ -323,7 +410,29 @@ def clean_to_export_path(importer, roll, steps):
 
 
 def main():
-    folder = pick_roll_folder()
+    importer = importTool.importTool()
+
+    lr_exports_folder = None
+    lr_exports_filenames = None
+
+    if prompt_yes_no('Import fresh JPG exports from the export folder?', default=True):
+        lr_exports_folder, lr_exports_filenames, batch_files = pick_lr_export_batch()
+
+        folder = None
+        if batch_files:
+            matched_folder = find_matching_roll(lr_exports_folder, batch_files)
+            if matched_folder:
+                print(f'\nMatching roll folder found:\n  {matched_folder}')
+                if prompt_yes_no('Use this roll?', default=True):
+                    folder = matched_folder
+            else:
+                db.w('[C]', 'No matching roll folder found under', ROLL_FOLDER_ROOT)
+
+        if not folder:
+            folder = pick_roll_folder()
+    else:
+        folder = pick_roll_folder()
+
     if not folder:
         db.w('[C]', 'No folder selected, aborting.')
         return
@@ -336,11 +445,9 @@ def main():
     # library path) -- it is not used to scan the whole library for a
     # single-roll clean.
     collection = collectionObj.collectionObj(os.path.dirname(folder))
-    importer = importTool.importTool()
 
-    if os.path.isdir(os.path.join(folder, '02_exports')):
-        if prompt_yes_no('Sync fresh JPG exports from a separate Lightroom-exports folder first?', default=False):
-            sync_lr_exports(importer, folder)
+    if lr_exports_folder:
+        apply_lr_exports_sync(importer, folder, lr_exports_folder, lr_exports_filenames)
 
     roll = collection.import_roll_from_path(folder)
     if roll is None:
