@@ -143,13 +143,13 @@ class metadataTool:
 
         self.delay_default = 0.002       # generic gap after a hotkey() combo
         self.delay_keypress = 0.002      # generic gap after a single press()
-        self.delay_paste = 0.01          # gap between copy/select-all/paste within one field; unstable < ~0.01
+        self.delay_paste = 0.005          # gap between copy/select-all/paste within one field; unstable < ~0.01
         self.delay_clipboard_release = 0.15  # gap after a field's paste, before the next field's clipboard write; unstable < ~0.075
         self.delay_finish_image = 0.1    # settle after advancing to the next image in the per-image loop (real decode/render)
         self.delay_field_close = 0.0375  # settle after exiting field-edit mode with no image navigation (apply_shared_nlp_metadata only)
         self.delay_dropdown_deselect_settle = 0.2  # settle after apply_dropdown_fields()'s closing "up" (collapses roll-wide selection to one image)
         self.delay_dropdown_confirm = 0.4  # settle before/after confirming a dropdown entry with enter; not yet frame-trace-tuned
-        self.delay_start = 0.0           # pause before the per-image loop begins
+        self.delay_start = 0.1           # pause before the per-image loop begins
         self.delay_mousemove = 0.05      # settle after moving the mouse, before clicking
 
         # Runtime diagnostics: label -> [call_count, total_seconds]. Filled in by
